@@ -19,11 +19,13 @@ limiter = Limiter(get_remote_address, app=app,
 from flask_talisman import Talisman
 Talisman(app, force_https=True, strict_transport_security=True,
          content_security_policy=None)   # set a stricter policy later
-# REPLACE: CORS(app)
-# WITH (use your real frontend URL):
+# Allowed browser origins. Set CORS_ORIGINS to a comma-separated list of the
+# frontend URLs for THIS deployment (e.g. "https://yusup.example,https://www.yusup.example").
+# Falls back to localhost dev only, so a fresh deploy never silently inherits
+# the original project's domains.
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
 CORS(app,
-     origins=["https://aspan-cafe-frontend.onrender.com", "https://subhifood.kz",
-              "https://www.subhifood.kz", "http://localhost:5173"],
+     origins=_cors_origins,
      supports_credentials=True)
 
 from db import get_db

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-/* ───────────────────────── Subhi Food ─────────────────────────
+/* ───────────────────────── Yusup Cafe ─────────────────────────
    Guest site + Admin panel in one app.
    Shared persistent storage: menu + orders are visible to everyone
    who opens this artifact (that's what makes guest → kitchen work).
@@ -15,57 +15,58 @@ const ORDERS_KEY = "aspan-orders-v1";
 const KASPI_KEY = "aspan-kaspi-qr-v1";
 const ADMIN_PIN = "1234";
 
-// Palette drawn from the real Subhi Food interior: graphite ceilings and
-// storefront, gold-veined marble floors, brass table legs, orange velvet
-// booths (the logo orange), fern greenery. Key names are kept so every
-// inline style updates automatically — only the values changed.
+// Palette drawn straight from the Yusup Cafe seal: deep burgundy field,
+// near-black inner disc, ivory type and laurel, with brass/saffron as the
+// warm accent. Key names are kept from the previous brand so every inline
+// style updates automatically — only the values changed. `teal` is the
+// primary action colour (burgundy), `saff` the brass highlight.
 const P = {
-  ink: "#26292E", ink2: "#1B1E22", bone: "#FAF6EF", card: "#FFFFFF",
-  line: "#EDE4D3", teal: "#F4801F", tealD: "#C4640D", saff: "#C99B45",
-  red: "#D0442E", green: "#5FA047", txt: "#24262A", sub: "#7C7468",
-  brand: "#F4801F", // Subhi Food logo orange
+  ink: "#2B1B1C", ink2: "#1A1011", bone: "#FAF5EC", card: "#FFFDF8",
+  line: "#EEE2D2", teal: "#742427", tealD: "#5D1C20", saff: "#C99A5A",
+  red: "#B23A2F", green: "#5C8544", txt: "#241819", sub: "#776960",
+  brand: "#742427", // Yusup Cafe seal burgundy
 };
 
-// Sora for display type (per the approved mockup). Sora ships Latin-only,
-// so Cyrillic headlines intentionally fall back to Manrope bold — the same
-// geometric look the mockup shows for "Всегда свежо…".
-const FONT_DISPLAY = "'Sora','Manrope',system-ui,sans-serif";
+// Cormorant Garamond for display type — the seal's serif wordmark reads as a
+// classic garamond, and Cormorant ships a Cyrillic subset, so Russian and
+// Kazakh headlines render in the same face instead of falling back.
+const FONT_DISPLAY = "'Cormorant Garamond',Georgia,'Times New Roman',serif";
 const FONT_BODY = "'Manrope',system-ui,-apple-system,sans-serif";
 
 // Order matches the physical menu's page sequence (coffee page → sides/
 // breakfast/cold-coffee page → sushi bar page → mains/pizza/fast-food page).
 const CATS = [
-  { id: "coffee", en: "Coffee", ru: "Кофе", kz: "Кофе", tint: "#F0E4D0" },
-  { id: "addons", en: "Add-ons", ru: "Добавки", kz: "Қоспалар", tint: "#F3E9DC" },
-  { id: "tea", en: "Tea", ru: "Чай", kz: "Шай", tint: "#E8F3E1" },
-  { id: "drinks", en: "Drinks", ru: "Напитки", kz: "Сусындар", tint: "#FDEBD3" },
-  { id: "milkshakes", en: "Milkshakes", ru: "Милкшейки", kz: "Милкшейктер", tint: "#FBE3EC" },
-  { id: "smoothies", en: "Smoothies", ru: "Смузи", kz: "Смузи", tint: "#F1E3EE" },
-  { id: "sides", en: "Sides", ru: "Гарниры", kz: "Гарнирлер", tint: "#F5E6D8" },
-  { id: "breakfast", en: "Breakfast", ru: "Завтраки", kz: "Таңғы ас", tint: "#FCEFD8" },
-  { id: "sauces", en: "Sauces", ru: "Соусы", kz: "Соустар", tint: "#F2E2D2" },
-  { id: "lemonades", en: "Lemonades", ru: "Лимонады", kz: "Лимонадтар", tint: "#E9F7EF" },
-  { id: "seafood", en: "Seafood", ru: "Морепродукты", kz: "Теңіз өнімдері", tint: "#E4EEEE" },
-  { id: "coldcoffee", en: "Iced coffee", ru: "Холодный кофе", kz: "Тоңазытылған кофе", tint: "#E6EEEC" },
-  { id: "sushi", en: "Sushi", ru: "Суши", kz: "Суши", tint: "#EFE3D9" },
-  { id: "soups", en: "Soups", ru: "Первые блюда", kz: "Бірінші тағамдар", tint: "#FBEADD" },
-  { id: "mains", en: "Mains", ru: "Вторые блюда", kz: "Негізгі тағамдар", tint: "#E8EDDF" },
-  { id: "salads", en: "Salads", ru: "Салаты", kz: "Салаттар", tint: "#E6F2E0" },
-  { id: "pizza", en: "Pizza", ru: "Пицца", kz: "Пицца", tint: "#FBE2DE" },
-  { id: "fastfood", en: "Fast food", ru: "Фаст-фуд", kz: "Фаст-фуд", tint: "#F7E7D0" },
+  { id: "coffee", en: "Coffee", ru: "Кофе", kz: "Кофе", tint: "#EFE1D4" },
+  { id: "addons", en: "Add-ons", ru: "Добавки", kz: "Қоспалар", tint: "#F4E9DC" },
+  { id: "tea", en: "Tea", ru: "Чай", kz: "Шай", tint: "#ECE6D5" },
+  { id: "drinks", en: "Drinks", ru: "Напитки", kz: "Сусындар", tint: "#F6E9D9" },
+  { id: "milkshakes", en: "Milkshakes", ru: "Милкшейки", kz: "Милкшейктер", tint: "#F6E6E3" },
+  { id: "smoothies", en: "Smoothies", ru: "Смузи", kz: "Смузи", tint: "#F1E4E4" },
+  { id: "sides", en: "Sides", ru: "Гарниры", kz: "Гарнирлер", tint: "#F2E7D8" },
+  { id: "breakfast", en: "Breakfast", ru: "Завтраки", kz: "Таңғы ас", tint: "#F7EBD8" },
+  { id: "sauces", en: "Sauces", ru: "Соусы", kz: "Соустар", tint: "#F0E2D6" },
+  { id: "lemonades", en: "Lemonades", ru: "Лимонады", kz: "Лимонадтар", tint: "#F2EDDC" },
+  { id: "seafood", en: "Seafood", ru: "Морепродукты", kz: "Теңіз өнімдері", tint: "#E9E5DB" },
+  { id: "coldcoffee", en: "Iced coffee", ru: "Холодный кофе", kz: "Тоңазытылған кофе", tint: "#EAE3D9" },
+  { id: "sushi", en: "Sushi", ru: "Суши", kz: "Суши", tint: "#EFE2DB" },
+  { id: "soups", en: "Soups", ru: "Первые блюда", kz: "Бірінші тағамдар", tint: "#F5E5DB" },
+  { id: "mains", en: "Mains", ru: "Вторые блюда", kz: "Негізгі тағамдар", tint: "#EDE3D3" },
+  { id: "salads", en: "Salads", ru: "Салаты", kz: "Салаттар", tint: "#E9E8D8" },
+  { id: "pizza", en: "Pizza", ru: "Пицца", kz: "Пицца", tint: "#F6E2DD" },
+  { id: "fastfood", en: "Fast food", ru: "Фаст-фуд", kz: "Фаст-фуд", tint: "#F5E8D3" },
 ];
 
 const TAGS = {
-  hit: { en: "Hit", ru: "Хит", kz: "Хит", bg: "#F8ECCF", fg: "#8F6512" },
-  new: { en: "New", ru: "Новинка", kz: "Жаңа", bg: "#FDE8D2", fg: "#C4640D" },
+  hit: { en: "Hit", ru: "Хит", kz: "Хит", bg: "#F4E5E2", fg: "#742427" },
+  new: { en: "New", ru: "Новинка", kz: "Жаңа", bg: "#F8ECCF", fg: "#8F6512" },
   veg: { en: "Veg", ru: "Вег", kz: "Вег", bg: "#E9F1DF", fg: "#3F7A2E" },
   spicy: { en: "Spicy", ru: "Острое", kz: "Ащы", bg: "#FAE5E3", fg: "#A5382A" },
 };
 
 const STATUS = {
-  pending: { en: "Pending confirmation", ru: "Ожидает подтверждения", kz: "Растауды күтуде", bg: "#E6E0D2", fg: "#26292E" },
+  pending: { en: "Pending confirmation", ru: "Ожидает подтверждения", kz: "Растауды күтуде", bg: "#E6E0D2", fg: "#241819" },
   awaiting_confirmation: { en: "Awaiting payment", ru: "Ожидает оплаты", kz: "Төлемді күтуде", bg: "#FBEFD9", fg: "#8A5A12" },
-  new: { en: "New", ru: "Новый", kz: "Жаңа", bg: "#E7E9EC", fg: "#3E4650" },
+  new: { en: "New", ru: "Новый", kz: "Жаңа", bg: "#EDE6DC", fg: "#5D4F49" },
   cooking: { en: "In the kitchen", ru: "Готовится", kz: "Дайындалуда", bg: "#FBEFD9", fg: "#8A5A12" },
   ready: { en: "Ready", ru: "Готов", kz: "Дайын", bg: "#E9F1DF", fg: "#3F7A2E" },
   done: { en: "Completed", ru: "Завершён", kz: "Аяқталды", bg: "#EFECE6", fg: "#7C7468" },
@@ -631,7 +632,7 @@ const T = {
     placedPickup: "We will call you when it is ready to pick up.",
     orderNo: "Order", statusNow: "Current status", refresh: "Refresh order status",
     newOrder: "New order", aboutTitle: "A cafe about the steppe, made urban",
-    aboutText: "Subhi Food is the restaurant of your dreams in Shymkent. Pizza, sushi, burgers, kebabs, coffee and desserts — all in one place, always fresh, filling and homely, every day from 08:00 to 01:00.",
+    aboutText: "Yusup Cafe is the restaurant of your dreams in Shymkent. Pizza, sushi, burgers, kebabs, coffee and desserts — all in one place, always fresh, filling and homely, every day from 08:00 to 01:00.",
     addressT: "Address", hoursT: "Hours", phoneT: "Phone",
     address: "Yusuf Saremi St. 964, Vahab Ata Mall, Sairam, Shymkent", hours: "Daily · 08:00–01:00",
     staff: "Staff portal",
@@ -726,7 +727,7 @@ const T = {
     placedPickup: "Позвоним, когда заказ можно будет забрать.",
     orderNo: "Заказ", statusNow: "Текущий статус", refresh: "Обновить статус заказа",
     newOrder: "Новый заказ", aboutTitle: "Кафе о степи на городской лад",
-    aboutText: "Subhi Food — ресторан твоей мечты в Шымкенте. Пицца, суши, бургеры, шашлык, кофе и десерты — всё в одном месте, всегда свежо, сытно и по-домашнему уютно, каждый день с 08:00 до 01:00.",
+    aboutText: "Yusup Cafe — ресторан твоей мечты в Шымкенте. Пицца, суши, бургеры, шашлык, кофе и десерты — всё в одном месте, всегда свежо, сытно и по-домашнему уютно, каждый день с 08:00 до 01:00.",
     addressT: "Адрес", hoursT: "Часы работы", phoneT: "Телефон",
     address: "ул. Юсуфа Сареми 964, ТЦ «Вахаб ата», Сайрам, Шымкент", hours: "Ежедневно · 08:00–01:00",
     staff: "Для персонала",
@@ -821,7 +822,7 @@ const T = {
     placedPickup: "Алуға дайын болғанда қоңырау шаламыз.",
     orderNo: "Тапсырыс", statusNow: "Ағымдағы күй", refresh: "Тапсырыс күйін жаңарту",
     newOrder: "Жаңа тапсырыс", aboutTitle: "Дала туралы қалалық кафе",
-    aboutText: "Subhi Food — Шымкенттегі арманыңыздағы мейрамхана. Пицца, суши, бургер, шашлық, кофе және десерттер — барлығы бір жерде, әрқашан жаңа, тойымды әрі үйдегідей жайлы, күн сайын 08:00-ден 01:00-ге дейін.",
+    aboutText: "Yusup Cafe — Шымкенттегі арманыңыздағы мейрамхана. Пицца, суши, бургер, шашлық, кофе және десерттер — барлығы бір жерде, әрқашан жаңа, тойымды әрі үйдегідей жайлы, күн сайын 08:00-ден 01:00-ге дейін.",
     addressT: "Мекенжай", hoursT: "Жұмыс уақыты", phoneT: "Телефон",
     address: "Юсуф Сареми к-сі 964, «Вахаб ата» СТ, Сайрам, Шымкент", hours: "Күн сайын · 08:00–01:00",
     staff: "Қызметкерлерге",
@@ -881,7 +882,11 @@ const T = {
   },
 };
 
-const API = "https://aspan-cafe-backend.onrender.com";
+// Backend base URL. Set VITE_API_URL at build time to point this deployment
+// at its own backend; the fallback keeps local dev working out of the box.
+// NOTE: the fallback is the ORIGINAL project's backend — set VITE_API_URL for
+// any deploy that must stay isolated from it.
+const API = import.meta.env.VITE_API_URL || "https://aspan-cafe-backend.onrender.com";
 
 const fmt = (n) => n.toLocaleString("ru-RU") + " ₸";
 // Mandatory 10% service charge. The backend re-computes and enforces this on
@@ -895,7 +900,7 @@ const serviceFeeOf = (subtotal) => Math.round(subtotal * SERVICE_FEE_RATE);
 // live in cafe settings; these defaults apply until first saved. The backend
 // re-computes the fee on every order, so this mirror is display-only.
 const DELIVERY_DEFAULTS = {
-  // Subhi Food — Юсуф Сареми 5/17, Сайрам (the physical restaurant). The
+  // Yusup Cafe — Юсуф Сареми 5/17, Сайрам (the physical restaurant). The
   // ring centre is code-controlled only (no admin UI sets it), so it always
   // comes from here and can never drift from a stale stored value.
   lat: 42.2976, lng: 69.7592,
@@ -1232,26 +1237,67 @@ async function apiEditOrderItems(id, items, newTotal) {
 /* ── small shared pieces ─────────────────────────────────────────────── */
 
 
-// The real Subhi Food logo (sun + "SUBHI FOOD" wordmark) as a transparent PNG.
-// Aspect is ~1.26:1 (w/h); `h` sets the height and width auto-scales. Used
-// everywhere the brand appears, on both light and dark surfaces.
-const Logo = ({ h = 40, className = "", style = {} }) => (
-  <img src="/logo-full.png" alt="Subhi Food" className={className}
-    style={{ height: h, width: "auto", display: "block", ...style }} draggable="false" />
+// The Yusup Cafe seal. The supplied PNG is a square burgundy tile with the
+// round seal inset and the حلال script below it, so it is cropped to a circle
+// and zoomed past the padding — the same treatment the brand sheet uses.
+// `h` drives the whole lockup: seal diameter, wordmark size and gap.
+// `tone="light"` puts the wordmark in ivory for dark surfaces.
+// `responsive` drops the wordmark to a bare seal on narrow screens — the
+// header row has no room for it next to the language and cart buttons.
+const Logo = ({ h = 40, className = "", style = {}, tone = "dark", wordmark = true, responsive = false }) => (
+  <span className={className}
+    style={{ display: "flex", width: "fit-content", alignItems: "center", gap: Math.round(h * 0.3), ...style }}>
+    <span style={{
+      height: h, width: h, flex: "0 0 auto", position: "relative", overflow: "hidden",
+      borderRadius: "50%", background: P.brand,
+      boxShadow: `0 0 0 1px ${tone === "light" ? "rgba(255,255,255,.3)" : "rgba(116,36,39,.22)"}`,
+    }}>
+      <img src="/yusup-logo.png" alt={wordmark ? "" : "Yusup Cafe"} draggable="false"
+        style={{ position: "absolute", left: "50%", top: "50%", width: "168%", maxWidth: "none", transform: "translate(-50%,-50%)" }} />
+    </span>
+    {wordmark && (
+      <span className={responsive ? "brand-wordmark" : ""} style={{ lineHeight: 1 }}>
+        <span style={{
+          display: "block", fontFamily: FONT_DISPLAY, fontWeight: 700,
+          fontSize: Math.round(h * 0.6), letterSpacing: "-.01em",
+          color: tone === "light" ? P.bone : P.tealD,
+        }}>Yusup Cafe</span>
+        {h >= 44 && (
+          <span style={{
+            display: "block", marginTop: Math.round(h * 0.1),
+            fontSize: Math.max(8, Math.round(h * 0.19)), fontWeight: 800,
+            letterSpacing: ".22em", textTransform: "uppercase",
+            color: tone === "light" ? "rgba(250,245,236,.5)" : "#9B8C83",
+          }}>Halal</span>
+        )}
+      </span>
+    )}
+  </span>
 );
 
-const HERO_IMAGE = "/subhi-hero-background.jpeg";
+const HERO_IMAGE = "/hero-feast.webp";
 
-// Decorative basil leaf for the hero (per the approved mockup): two-tone
-// green teardrop with a centre vein, scattered around the orange stage.
-const BasilLeaf = ({ size = 60, rotate = 0, style = {} }) => (
+// Height of the fixed "cafe is closed" banner. The banner and the sticky
+// header are both pinned to the top of the viewport, so the header is pushed
+// down by exactly this much whenever the banner is showing.
+const CLOSED_BANNER_H = 46;
+
+// Decorative laurel sprig for the hero — the same wreath that rings the fork
+// and spoon in the seal, drawn in brass and used sparingly on the burgundy.
+const LaurelSprig = ({ size = 60, rotate = 0, opacity = 0.55, color = P.saff, style = {} }) => (
   <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true"
     className="absolute pointer-events-none select-none"
-    style={{ transform: `rotate(${rotate}deg)`, ...style }}>
-    <path d="M32 2 C46 8 56 22 54 38 C52 52 42 60 32 62 C22 60 12 52 10 38 C8 22 18 8 32 2 Z" fill="#4E9440" />
-    <path d="M32 2 C18 8 8 22 10 38 C12 52 22 60 32 62 Z" fill="#5CA84C" />
-    <path d="M32 6 C32 22 32 42 32 58 M32 22 C26 24 22 28 20 34 M32 22 C38 24 42 28 44 34 M32 38 C27 40 24 43 22 48 M32 38 C37 40 40 43 42 48"
-      stroke="#3A7530" strokeWidth="1.6" strokeLinecap="round" />
+    style={{ transform: `rotate(${rotate}deg)`, opacity, ...style }}>
+    <path d="M12 58C24 48 34 33 40 12" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    <g fill={color}>
+      <ellipse cx="20" cy="46" rx="7" ry="3.4" transform="rotate(-32 20 46)" />
+      <ellipse cx="27" cy="37" rx="7" ry="3.4" transform="rotate(-40 27 37)" />
+      <ellipse cx="32" cy="27" rx="6.4" ry="3.2" transform="rotate(-50 32 27)" />
+      <ellipse cx="36" cy="18" rx="5.6" ry="2.8" transform="rotate(-58 36 18)" />
+      <ellipse cx="27" cy="49" rx="6" ry="3" transform="rotate(24 27 49)" />
+      <ellipse cx="33" cy="40" rx="5.6" ry="2.8" transform="rotate(16 33 40)" />
+      <ellipse cx="37" cy="31" rx="5" ry="2.5" transform="rotate(8 37 31)" />
+    </g>
   </svg>
 );
 
@@ -1279,7 +1325,7 @@ const PriceBreakdown = ({ subtotal, t, withFee = true, deliveryFee = 0 }) => {
     <div>
       <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>{t("subtotal")}</span><span>{fmt(subtotal)}</span></div>
       {fee > 0 && <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>{t("serviceFee")}</span><span>{fmt(fee)}</span></div>}
-      {dFee > 0 && <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>🚚 {t("deliveryFeeLbl")}</span><span>{fmt(dFee)}</span></div>}
+      {dFee > 0 && <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>{t("deliveryFeeLbl")}</span><span>{fmt(dFee)}</span></div>}
       <div className="flex justify-between pt-1.5 mt-1 font-extrabold" style={{ borderTop: `1px solid ${P.line}`, color: P.txt }}><span>{t("totalToPay")}</span><span>{fmt(subtotal + fee + dFee)}</span></div>
     </div>
   );
@@ -1300,7 +1346,7 @@ const OrderPriceBreakdown = ({ order, t }) => {
     <div>
       <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>{t("subtotal")}</span><span>{fmt(order.subtotal || Math.max(0, (order.total || 0) - svcFee - dFee))}</span></div>
       {svcFee > 0 && <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>{t("serviceFee")}</span><span>{fmt(svcFee)}</span></div>}
-      {dFee > 0 && <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>🚚 {t("deliveryFeeLbl")}</span><span>{fmt(dFee)}</span></div>}
+      {dFee > 0 && <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>{t("deliveryFeeLbl")}</span><span>{fmt(dFee)}</span></div>}
       <div className="flex justify-between pt-1.5 mt-1 font-extrabold" style={{ borderTop: `1px solid ${P.line}`, color: P.txt }}><span>{t("totalToPay")}</span><span>{fmt(order.total || 0)}</span></div>
     </div>
   );
@@ -1432,15 +1478,15 @@ function MapPicker({ open, onClose, onPick, lang, t, initial, deliveryCfg }) {
     L.control.attribution({ prefix: false }).addAttribution("© OpenStreetMap").addTo(map);
     // Fee zones as concentric rings around the restaurant (largest first so
     // the inner ones stay clickable/visible), plus the restaurant itself.
-    const ringColors = ["#D0442E", "#C99B45", "#5FA047"]; // outer → inner
+    const ringColors = ["#B23A2F", "#C99A5A", "#5C8544"]; // outer → inner
     [...cfg.zones].sort((a, b) => b.km - a.km).forEach((z, i) => {
       L.circle([cfg.lat, cfg.lng], {
-        radius: z.km * 1000, color: ringColors[i] || "#5FA047", weight: 1.5,
-        fillColor: ringColors[i] || "#5FA047", fillOpacity: 0.08, interactive: false,
+        radius: z.km * 1000, color: ringColors[i] || "#5C8544", weight: 1.5,
+        fillColor: ringColors[i] || "#5C8544", fillOpacity: 0.08, interactive: false,
       }).addTo(map);
     });
     L.circleMarker([cfg.lat, cfg.lng], {
-      radius: 8, color: "#fff", weight: 2.5, fillColor: "#F4801F", fillOpacity: 1, interactive: false,
+      radius: 8, color: "#fff", weight: 2.5, fillColor: "#742427", fillOpacity: 1, interactive: false,
     }).addTo(map);
     map.setView(initial ? [initial.lat, initial.lng] : [cfg.lat, cfg.lng], initial ? 17 : 13);
     // The modal appears in the same frame the map mounts, so the container
@@ -1483,13 +1529,18 @@ function MapPicker({ open, onClose, onPick, lang, t, initial, deliveryCfg }) {
       <div className="absolute inset-0" style={{ background: "rgba(14,22,32,.55)" }} onClick={onClose} />
       <div className="absolute left-0 right-0 bottom-0 sm:left-1/2 sm:right-auto sm:bottom-auto sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[520px] rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col" style={{ background: P.bone }}>
         <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: `1px solid ${P.line}` }}>
-          <div className="font-extrabold text-sm" style={{ fontFamily: FONT_DISPLAY, color: P.txt }}>📍 {t("mapPickTitle")}</div>
+          <div className="font-extrabold text-sm" style={{ fontFamily: FONT_DISPLAY, color: P.txt }}>{t("mapPickTitle")}</div>
           <button onClick={onClose} aria-label="close" className="w-8 h-8 rounded-full font-bold flex-shrink-0" style={{ background: P.card, border: `1px solid ${P.line}` }}>✕</button>
         </div>
         <div className="relative" style={{ height: "52vh", minHeight: 260 }}>
           <div ref={mapEl} className="absolute inset-0" style={{ zIndex: 0 }} />
           {/* Fixed pin over the map centre; its tip marks the delivery point. */}
-          <div className="absolute left-1/2 top-1/2 pointer-events-none" style={{ transform: "translate(-50%, -100%)", fontSize: 36, zIndex: 500, textShadow: "0 2px 4px rgba(0,0,0,.35)" }}>📍</div>
+          <div className="absolute left-1/2 top-1/2 pointer-events-none" style={{ transform: "translate(-50%, -100%)", zIndex: 500, filter: "drop-shadow(0 2px 4px rgba(0,0,0,.35))" }}>
+            <svg width="30" height="40" viewBox="0 0 24 32" fill="none" aria-hidden="true">
+              <path d="M12 0.8C5.9 0.8 1 5.7 1 11.8c0 8 11 19.4 11 19.4s11-11.4 11-19.4C23 5.7 18.1.8 12 .8Z" fill={P.brand} stroke="#fff" strokeWidth="1.5" />
+              <circle cx="12" cy="11.6" r="4" fill="#fff" />
+            </svg>
+          </div>
         </div>
         <div className="px-4 py-3 flex flex-col gap-2" style={{ borderTop: `1px solid ${P.line}` }}>
           <div className="text-xs" style={{ color: P.sub }}>{t("mapPickHint")}</div>
@@ -1502,9 +1553,9 @@ function MapPicker({ open, onClose, onPick, lang, t, initial, deliveryCfg }) {
               : fee === 0
                 ? { background: "#E9F1DF", color: "#3F7A2E" }
                 : { background: "#FBEFD9", color: "#8A5A12" }}>
-            {fee === null ? <>😔 {t("deliveryTooFar")}</>
-              : fee === 0 ? <>🎉 {t("deliveryFree")}</>
-              : <>🚚 {t("deliveryFeeLbl")}: +{fmt(fee)}</>}
+            {fee === null ? <>{t("deliveryTooFar")}</>
+              : fee === 0 ? <>{t("deliveryFree")}</>
+              : <>{t("deliveryFeeLbl")}: +{fmt(fee)}</>}
           </div>
           <button type="button" onClick={confirm} disabled={fee === null}
             className="w-full py-3 rounded-xl font-extrabold text-sm"
@@ -1527,7 +1578,7 @@ function PrepCountdownCustomer({ live, t }) {
   const label = live.type === "delivery" ? t("prepReadyRestaurant") : t("prepReadyOrder");
   return (
     <div className="mt-4 rounded-xl p-4 inline-flex flex-col items-center gap-1" style={{ background: "#FBEFD9", border: "1px solid #E8D9B5" }}>
-      <div className="text-sm font-extrabold" style={{ color: "#8A5A12" }}>🍳 {t("beingPrepared")}</div>
+      <div className="text-sm font-extrabold" style={{ color: "#8A5A12" }}>{t("beingPrepared")}</div>
       <div className="text-xs font-bold" style={{ color: "#8A5A12" }}>
         {left > 0 ? `${label} ${left} ${t("minShort")}` : t("almostReady")}
       </div>
@@ -1595,7 +1646,7 @@ function ntfText(n, order, t) {
 // PDF. Kept in Russian — it is a legal text of the Kazakhstani entity.
 const PRIVACY_POLICY = {
   title: "Политика конфиденциальности",
-  intro: "Настоящая Политика конфиденциальности определяет порядок сбора, использования и защиты персональных данных пользователей сайта Subhi Food (далее — «Сайт»).",
+  intro: "Настоящая Политика конфиденциальности определяет порядок сбора, использования и защиты персональных данных пользователей сайта Yusup Cafe (далее — «Сайт»).",
   sections: [
     { title: "1. Общие положения", body: [
       { p: "Используя Сайт, пользователь выражает согласие с настоящей Политикой конфиденциальности и условиями обработки своих персональных данных." },
@@ -1636,7 +1687,7 @@ const PRIVACY_POLICY = {
       { ul: ["получать информацию об обработке персональных данных;", "требовать изменения или удаления своих данных;", "отозвать согласие на обработку персональных данных;", "обращаться по вопросам обработки персональных данных."] },
     ]},
     { title: "10. Контактная информация", body: [
-      { p: "Название ресторана: Subhi Food" },
+      { p: "Название ресторана: Yusup Cafe" },
       { p: "Телефон: +7 778 564 77 77" },
       { p: "Адрес: Сайрам, улица Юсуфа Сареми 964. ТЦ Вахаб ата" },
     ]},
@@ -1656,7 +1707,7 @@ function PrivacyPolicy({ open, onClose }) {
       <div className="absolute inset-0" style={{ background: "rgba(14,22,32,.55)" }} onClick={onClose} />
       <div className="absolute right-0 top-0 h-full w-full sm:w-[480px] flex flex-col" style={{ background: P.bone }}>
         <div className="flex items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: `1px solid ${P.line}` }}>
-          <div className="font-extrabold text-base" style={{ fontFamily: FONT_DISPLAY, color: P.txt }}>🔒 {PRIVACY_POLICY.title}</div>
+          <div className="font-extrabold text-base" style={{ fontFamily: FONT_DISPLAY, color: P.txt }}>{PRIVACY_POLICY.title}</div>
           <button onClick={onClose} aria-label="close" className="w-9 h-9 rounded-full font-bold flex-shrink-0" style={{ background: P.card, border: `1px solid ${P.line}` }}>✕</button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">
@@ -1674,7 +1725,7 @@ function PrivacyPolicy({ open, onClose }) {
             </div>
           ))}
           <div className="mt-6 mb-2 rounded-xl px-4 py-3 text-xs" style={{ background: P.card, border: `1px solid ${P.line}`, color: P.sub }}>
-            Subhi Food · +7 778 564 77 77 · Сайрам, ул. Юсуфа Сареми 964, ТЦ «Вахаб ата»
+            Yusup Cafe · +7 778 564 77 77 · Сайрам, ул. Юсуфа Сареми 964, ТЦ «Вахаб ата»
           </div>
         </div>
         <div className="px-5 py-4" style={{ borderTop: `1px solid ${P.line}`, background: P.card }}>
@@ -1711,7 +1762,7 @@ function OrdersBoard({ open, onClose, orders, lang, t, refreshOrders }) {
   const colorOf = (s) => s === "ready"
     ? { bg: "#E9F1DF", fg: "#3F7A2E", bd: "#BFD8A8" }
     : s === "cooking"
-      ? { bg: "#EEEDEA", fg: "#6F7884", bd: P.line }
+      ? { bg: "#EFECE6", fg: "#776960", bd: P.line }
       : { bg: P.card, fg: P.txt, bd: P.line };
 
   return (
@@ -1728,7 +1779,6 @@ function OrdersBoard({ open, onClose, orders, lang, t, refreshOrders }) {
           {!sel ? (
             active.length === 0 ? (
               <div className="text-center mt-16">
-                <div style={{ fontSize: 44 }}>🧾</div>
                 <div className="font-extrabold mt-2" style={{ color: P.txt }}>{t("boardEmpty")}</div>
               </div>
             ) : (
@@ -2088,7 +2138,6 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {step === "cart" && (entries.length === 0 ? (
             <div className="text-center mt-16">
-              <div style={{ fontSize: 44 }}>🧺</div>
               <div className="font-extrabold mt-2" style={{ color: P.txt }}>{t("cartEmpty")}</div>
               <div className="text-sm mt-1" style={{ color: P.sub }}>{t("cartEmptyHint")}</div>
             </div>
@@ -2096,7 +2145,11 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
             <div className="flex flex-col gap-3">
               {entries.map(({ cartId, item, price, sizeLabel, q }) => (
                 <div key={cartId} className="flex items-center gap-3 rounded-xl p-3" style={{ background: P.card, border: `1px solid ${P.line}` }}>
-                  <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ background: CATS.find((c) => c.id === item.cat)?.tint }}>{item.emoji}</div>
+                  <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center text-2xl flex-shrink-0" style={{ background: CATS.find((c) => c.id === item.cat)?.tint }}>
+                    {(item.image || GALLERY_MENU_IMAGES[item.id])
+                      ? <img src={item.image || GALLERY_MENU_IMAGES[item.id]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      : item.emoji}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-sm truncate" style={{ color: P.txt }}>{pickL(item.name, lang)}{sizeLabel ? ` (${sizeLabel})` : ""}</div>
                     <div className="text-xs" style={{ color: P.sub }}>{fmt(price)}</div>
@@ -2111,10 +2164,10 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
             <div className="flex flex-col gap-4">
               {booking && (
                 <div className="rounded-2xl p-4" style={{ background: "#FBEFD9", border: `1px solid ${P.saff}` }}>
-                  <div className="font-extrabold mb-1" style={{ color: "#8A5A12" }}>🍽 {t("bookingFor")}</div>
-                  <div className="font-bold" style={{ color: P.txt }}>{pickL(booking.roomName, lang)} · 👥 {t("upTo")} {booking.capacity}</div>
-                  <div className="text-sm mt-1" style={{ color: P.sub }}>📅 {booking.date} · 🕒 {booking.time}{booking.guests ? ` · 👥 ${booking.guests}` : ""}</div>
-                  <div className="text-sm" style={{ color: P.sub }}>📞 {booking.phone}</div>
+                  <div className="font-extrabold mb-1" style={{ color: "#8A5A12" }}>{t("bookingFor")}</div>
+                  <div className="font-bold" style={{ color: P.txt }}>{pickL(booking.roomName, lang)} · {t("upTo")} {booking.capacity}</div>
+                  <div className="text-sm mt-1" style={{ color: P.sub }}>{booking.date} · {booking.time}{booking.guests ? ` · ${booking.guests}` : ""}</div>
+                  <div className="text-sm" style={{ color: P.sub }}>{booking.phone}</div>
                   <div className="text-xs mt-2" style={{ color: "#8A5A12" }}>{entries.length === 0 ? t("roomOnly") : ""}</div>
                 </div>
               )}
@@ -2122,10 +2175,9 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
               <div>
                 <div className="text-sm font-bold mb-2" style={{ color: P.txt }}>{t("orderType")}</div>
                 <div className="grid grid-cols-3 gap-2">
-                  {[["table", "🍽", t("atTableShort")], ["pickup", "🥡", t("pickup")], ["delivery", "🚗", t("delivery")]].map(([v, icon, label]) => (
-                    <button key={v} onClick={() => { setType(v); setErr(""); }} className="rounded-xl py-3 px-1 font-bold text-xs flex flex-col items-center gap-1"
+                  {[["table", t("atTableShort")], ["pickup", t("pickup")], ["delivery", t("delivery")]].map(([v, label]) => (
+                    <button key={v} onClick={() => { setType(v); setErr(""); }} className="rounded-xl py-3.5 px-1 font-bold text-xs flex flex-col items-center gap-1"
                       style={{ background: type === v ? P.ink : P.card, color: type === v ? "#fff" : P.txt, border: `1px solid ${type === v ? P.ink : P.line}` }}>
-                      <span style={{ fontSize: 18 }}>{icon}</span>
                       <span>{label}</span>
                     </button>
                   ))}
@@ -2168,7 +2220,7 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                   <button type="button" onClick={() => setMapOpen(true)}
                     className="py-2.5 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5"
                     style={{ background: P.brand, color: "#fff" }}>
-                    📌 {location ? "✏️ " : ""}{t("mapPickBtn")}
+                    {t("mapPickBtn")}
                   </button>
                   <MapPicker open={mapOpen} onClose={() => setMapOpen(false)} onPick={pickFromMap}
                     lang={lang} t={t} initial={location} deliveryCfg={deliveryCfg} />
@@ -2177,7 +2229,7 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                     <>
                       {address && (
                         <div className="text-xs font-bold rounded-lg px-3 py-2" style={{ background: P.card, border: `1px solid ${P.line}`, color: P.txt }}>
-                          📍 {address}
+                          {address}
                         </div>
                       )}
                       <div className="text-xs font-bold rounded-lg px-3 py-2 flex items-center justify-between gap-2" style={{ background: "#E9F1DF", color: "#3F7A2E" }}>
@@ -2190,21 +2242,21 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                           : deliveryFee === 0
                             ? { background: "#E9F1DF", color: "#3F7A2E" }
                             : { background: "#FBEFD9", color: "#8A5A12" }}>
-                        {deliveryFee === null ? <>😔 {t("deliveryTooFar")}</>
-                          : deliveryFee === 0 ? <>🎉 {t("deliveryFree")}</>
-                          : <>🚚 {t("deliveryFeeLbl")}: +{fmt(deliveryFee)} · {t("inclInTotal")}</>}
+                        {deliveryFee === null ? <>{t("deliveryTooFar")}</>
+                          : deliveryFee === 0 ? <>{t("deliveryFree")}</>
+                          : <>{t("deliveryFeeLbl")}: +{fmt(deliveryFee)} · {t("inclInTotal")}</>}
                       </div>
                     </>
                   )}
                   <div className="text-xs rounded-lg px-3 py-2" style={{ background: "#FBEFD9", color: "#8A5A12" }}>
-                    💬 {t("addrDetailsNote")}
+                    {t("addrDetailsNote")}
                   </div>
-                  <div className="text-xs" style={{ color: P.sub }}>📞 {t("courierCall")}</div>
+                  <div className="text-xs" style={{ color: P.sub }}>{t("courierCall")}</div>
                 </div>
               )}
               {!booking && (type === "pickup" || type === "delivery") && (
                 <div>
-                  <div className="text-sm font-bold mb-2" style={{ color: P.txt }}>🕒 {t("whenLabel")}</div>
+                  <div className="text-sm font-bold mb-2" style={{ color: P.txt }}>{t("whenLabel")}</div>
                   <div className="grid grid-cols-2 gap-2">
                     {[["asap", t("asap")], ["time", t("forTime")]].map(([v, label]) => (
                       <button key={v} type="button" onClick={() => setSchedMode(v)}
@@ -2260,19 +2312,18 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
 
           {step === "done" && live && (
             <div className="text-center mt-8">
-              <div style={{ fontSize: 52 }}>✅</div>
               <div className="font-extrabold text-xl mt-2" style={{ fontFamily: FONT_DISPLAY, color: P.txt }}>
                 {t("orderNo")} №{live.num}
               </div>
               <div className="text-sm mt-2" style={{ color: P.sub }}>
-                {live.type === "booking" ? `🍽 ${live.booking ? pickL(live.booking.roomName, lang) : ""} · ${live.booking ? live.booking.date : ""} ${live.booking ? live.booking.time : ""}`
+                {live.type === "booking" ? `${live.booking ? pickL(live.booking.roomName, lang) : ""} · ${live.booking ? live.booking.date : ""} ${live.booking ? live.booking.time : ""}`
                   : live.type === "table" ? `${t("placedTable")} №${live.table}.`
                   : live.type === "delivery" ? t("placedDelivery")
                   : t("placedPickup")}
               </div>
               {live.type === "delivery" && live.address && (
                 <div className="text-xs mt-2 rounded-lg px-3 py-2 inline-block" style={{ background: P.bone, color: P.txt }}>
-                  📍 {live.address}
+                  {live.address}
                 </div>
               )}
               {(live.total || 0) > 0 && (
@@ -2282,13 +2333,13 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
               )}
               {live.type === "booking" && live.callConfirmed && (
                 <div className="mt-4 mx-auto rounded-xl px-4 py-3 text-sm font-extrabold" style={{ background: "#E9F1DF", color: "#3F7A2E", border: "1px solid #BFD8A8", maxWidth: 300 }}>
-                  ✅ {t("bookingConfirmed")}
+                  {t("bookingConfirmed")}
                 </div>
               )}
               {live.status === "awaiting_confirmation" && kaspiUrl && (
                 <div className="mt-4 mx-auto rounded-xl p-4 text-left" style={{ background: "#FBEFD9", border: "1px solid #E8D9B5", maxWidth: 300 }}>
                   <div className="text-sm font-extrabold" style={{ color: "#8A5A12" }}>
-                    💳 {t("kaspiAmount")}: {fmt(live.total || 0)}
+                    {t("kaspiAmount")}: {fmt(live.total || 0)}
                   </div>
                   <div className="text-xs mt-1 font-bold" style={{ color: "#8A5A12" }}>
                     {t("kaspiComment")}: №{live.num}
@@ -2306,7 +2357,7 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
               <OrderTimeline o={live} t={t} />
               {ntfs.length > 0 && (
                 <div className="mt-4 mx-auto text-left rounded-xl p-4" style={{ background: P.card, border: `1px solid ${P.line}`, maxWidth: 280 }}>
-                  <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: P.sub }}>🔔 {t("notifTitle")}</div>
+                  <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: P.sub }}>{t("notifTitle")}</div>
                   {ntfs.slice().reverse().map((n) => (
                     <div key={n.id} className="flex items-start gap-2 py-1.5" style={{ borderTop: `1px solid ${P.line}` }}>
                       {!n.read_status && <span className="mt-1.5 rounded-full flex-shrink-0" style={{ background: P.teal, width: 8, height: 8 }} />}
@@ -2357,8 +2408,8 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                     the drawer without losing the checkout or toggling the box. */}
                 <label className={`consent-box flex items-start gap-3 rounded-xl px-3.5 py-3 cursor-pointer select-none${consentShake ? " consent-shake" : ""}`}
                   style={{
-                    background: consentError ? "rgba(208,68,46,.08)" : "rgba(244,128,31,.08)",
-                    border: `1.5px solid ${consentError ? P.red : consent ? P.teal : "#F2D6B4"}`,
+                    background: consentError ? "rgba(178,58,47,.08)" : "rgba(116,36,39,.06)",
+                    border: `1.5px solid ${consentError ? P.red : consent ? P.teal : "#E2CDBA"}`,
                     transition: "border-color .15s, background-color .15s",
                   }}>
                   <input type="checkbox" checked={consent}
@@ -2368,7 +2419,7 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                     style={{
                       width: 26, height: 26, fontSize: 16, fontWeight: 900, lineHeight: 1,
                       background: consent ? P.teal : "#fff",
-                      border: `2px solid ${consent ? P.teal : (consentError ? P.red : "#E8BE8C")}`,
+                      border: `2px solid ${consent ? P.teal : (consentError ? P.red : "#D8BE9A")}`,
                       color: "#fff", transition: "all .15s",
                     }}>
                     {consent ? "✓" : ""}
@@ -2397,12 +2448,12 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                 <button disabled={sending} aria-disabled={!consent} onClick={submitOrder}
                   className="w-full py-3 rounded-xl font-extrabold flex items-center justify-center gap-2"
                   style={{
-                    background: isClosed ? P.sub : !consent ? "#C4CBD2" : (!booking && kaspiUrl) ? "#F14635" : P.teal,
+                    background: isClosed ? P.sub : !consent ? "#CFC5BA" : (!booking && kaspiUrl) ? "#F14635" : P.teal,
                     color: "#fff", opacity: sending ? 0.6 : 1,
                     cursor: (isClosed || !consent) ? "not-allowed" : "pointer",
                     transition: "background-color .15s",
                   }}>
-                  {sending ? "…" : <><span>{isClosed ? "🔒" : (!booking && kaspiUrl) ? "💳" : "📋"}</span><span>{booking ? t("bookNoPay") : (kaspiUrl ? t("payKaspi") : t("placeOrderFinal"))}</span></>}
+                  {sending ? "…" : <span>{booking ? t("bookNoPay") : (kaspiUrl ? t("payKaspi") : t("placeOrderFinal"))}</span>}
                 </button>
               </div>
             )}
@@ -2535,7 +2586,7 @@ function BookingWizard({ open, onClose, lang, t, onProceed, cafeInfo }) {
       <div className="absolute inset-0" style={{ background: "rgba(14,22,32,.55)" }} onClick={onClose} />
       <div className="absolute right-0 top-0 h-full w-full sm:w-[440px] flex flex-col" style={{ background: P.bone }}>
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${P.line}` }}>
-          <div className="font-extrabold text-lg" style={{ fontFamily: FONT_DISPLAY, color: P.txt }}>🍽 {t("bookRoom")}</div>
+          <div className="font-extrabold text-lg" style={{ fontFamily: FONT_DISPLAY, color: P.txt }}>{t("bookRoom")}</div>
           <button onClick={onClose} aria-label="close" className="w-9 h-9 rounded-full font-bold" style={{ background: P.card, border: `1px solid ${P.line}` }}>✕</button>
         </div>
 
@@ -2551,7 +2602,7 @@ function BookingWizard({ open, onClose, lang, t, onProceed, cafeInfo }) {
             <>
               {/* 1. DATE INPUT */}
               <div className="mb-4">
-                <div className="text-sm font-bold mb-1.5" style={{ color: P.txt }}>📅 {t("date")}</div>
+                <div className="text-sm font-bold mb-1.5" style={{ color: P.txt }}>{t("date")}</div>
                 <input
                   type="date"
                   min={today}
@@ -2564,7 +2615,7 @@ function BookingWizard({ open, onClose, lang, t, onProceed, cafeInfo }) {
 
               {/* 2. TIME INPUT */}
               <div className="mb-4">
-                <div className="text-sm font-bold mb-1.5" style={{ color: P.txt }}>🕒 {t("time")}</div>
+                <div className="text-sm font-bold mb-1.5" style={{ color: P.txt }}>{t("time")}</div>
                 <div className="flex gap-2 items-center">
                   <select value={time.split(":")[0] || ""}
                     onChange={(e) => setTime(e.target.value + ":" + (time.split(":")[1] || "00"))}
@@ -2593,7 +2644,7 @@ function BookingWizard({ open, onClose, lang, t, onProceed, cafeInfo }) {
 
               {/* 3. GUESTS INPUT */}
               <label className="block">
-                <div className="text-sm font-bold mb-1.5" style={{ color: P.txt }}>👥 {t("guests")}</div>
+                <div className="text-sm font-bold mb-1.5" style={{ color: P.txt }}>{t("guests")}</div>
                 <input inputMode="numeric" value={guests} onChange={(e) => setGuests(e.target.value.replace(/\D/g, "").slice(0, 3))}
                   placeholder={t("guests")} className="w-full rounded-xl px-3 py-2.5 text-sm font-medium outline-none" style={{ background: P.card, border: `1px solid ${P.line}`, color: P.txt }} />
               </label>
@@ -2603,7 +2654,7 @@ function BookingWizard({ open, onClose, lang, t, onProceed, cafeInfo }) {
           {bStep === "rooms" && (
             <>
               <div className="rounded-xl p-3 mb-4 text-sm font-bold flex items-center justify-between" style={{ background: P.card, border: `1px solid ${P.line}`, color: P.txt }}>
-                <span>📅 {date} · 🕒 {time}{guests ? ` · 👥 ${guests}` : ""}</span>
+                <span>{date} · {time}{guests ? ` · ${guests}` : ""}</span>
                 <button onClick={() => setBStep("schedule")} className="text-xs font-bold" style={{ color: P.teal }}>✎</button>
               </div>
               <div className="font-extrabold mb-3" style={{ color: P.txt }}>{t("pickRoom")}{availLoading ? ` · ${t("checking")}` : ""}</div>
@@ -2616,15 +2667,14 @@ function BookingWizard({ open, onClose, lang, t, onProceed, cafeInfo }) {
                   return (
                     <button key={r.id} disabled={off} onClick={() => { setRoom(r); setBStep("phone"); }}
                       className="flex items-center gap-3 rounded-2xl p-4 text-left" style={{ background: P.card, border: `1px solid ${room?.id === r.id ? P.teal : P.line}`, opacity: off ? 0.55 : 1, cursor: off ? "not-allowed" : "pointer" }}>
-                      <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl" style={{ background: P.bone, filter: off ? "grayscale(1)" : "none" }}>{r.emoji}</div>
                       <div className="flex-1">
                         <div className="font-extrabold" style={{ color: P.txt }}>{pickL(r.name, lang)}</div>
-                        <div className="text-sm font-bold mt-0.5" style={{ color: off ? P.sub : P.teal }}>👥 {t("upTo")} {r.capacity} {t("people")}</div>
+                        <div className="text-sm font-bold mt-0.5" style={{ color: off ? P.sub : P.teal }}>{t("upTo")} {r.capacity} {t("people")}</div>
                       </div>
                       {off
                         ? <Pill bg="#FAE5E3" fg="#933A34">{roomBusy(r.id) ? t("busyAtTime") : t("tooSmall")}</Pill>
                         : sitUntilOf(r.id)
-                          ? <Pill bg="#FBEFD9" fg="#8A5A12">⏳ {untilText(sitUntilOf(r.id))}</Pill>
+                          ? <Pill bg="#FBEFD9" fg="#8A5A12">{untilText(sitUntilOf(r.id))}</Pill>
                           : <span style={{ color: P.sub }}>→</span>}
                     </button>
                   );
@@ -2644,16 +2694,15 @@ function BookingWizard({ open, onClose, lang, t, onProceed, cafeInfo }) {
 
           {bStep === "bridge" && (
             <div className="text-center mt-6">
-              <div style={{ fontSize: 52 }}>🍽️</div>
               <div className="font-extrabold text-xl mt-3" style={{ fontFamily: FONT_DISPLAY, color: P.txt }}>{t("preOrderTitle")}</div>
-              <div className="text-sm mt-3 rounded-xl px-4 py-3 text-left" style={{ background: "#FBEFD9", color: "#8A5A12" }}>💡 {t("preOrderNote")}</div>
+              <div className="text-sm mt-3 rounded-xl px-4 py-3 text-left" style={{ background: "#FBEFD9", color: "#8A5A12" }}>{t("preOrderNote")}</div>
               <div className="rounded-xl p-3 mt-4 text-sm text-left" style={{ background: P.card, border: `1px solid ${P.line}` }}>
-                <div className="font-bold" style={{ color: P.txt }}>{room && pickL(room.name, lang)} · 👥 {t("upTo")} {room?.capacity}</div>
-                <div className="text-xs mt-1" style={{ color: P.sub }}>📅 {date} · 🕒 {time}{room && sitUntilOf(room.id) ? `–${sitUntilOf(room.id)}` : ""} · 📞 +7{phoneBody}</div>
+                <div className="font-bold" style={{ color: P.txt }}>{room && pickL(room.name, lang)} · {t("upTo")} {room?.capacity}</div>
+                <div className="text-xs mt-1" style={{ color: P.sub }}>{date} · {time}{room && sitUntilOf(room.id) ? `–${sitUntilOf(room.id)}` : ""} · +7{phoneBody}</div>
               </div>
               <button onClick={() => onProceed(booking(), true)}
                 className="w-full mt-5 py-3 rounded-xl font-extrabold" style={{ background: P.teal, color: "#fff" }}>
-                🍽️ {t("goToMenu")}
+                {t("goToMenu")}
               </button>
               <button onClick={() => onProceed(booking(), false)}
                 className="w-full mt-2 py-3 rounded-xl font-bold text-sm" style={{ background: P.card, border: `1px solid ${P.line}`, color: P.txt }}>
@@ -2719,22 +2768,23 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
     // never derived from the visitor's own browser clock/timezone.
     const isClosed = cafeInfo ? cafeInfo.effectiveOpen === false : false;
     return (
-    <div style={{ background: P.bone, minHeight: "100vh", color: P.txt }}>
+    <div style={{ background: P.bone, minHeight: "100vh", color: P.txt, paddingTop: isClosed ? CLOSED_BANNER_H : 0 }}>
     {/* --- CLOSED BANNER --- */}
     {isClosed && (
-      <div className="fixed top-0 left-0 right-0 z-50 text-center py-3 font-extrabold text-sm" style={{ background: "#fff", color: P.red, borderBottom: `2px solid ${P.red}` }}>
-        🔒 {lang === "ru" ? "Кафе сейчас закрыто." : lang === "kz" ? "Кафе қазір жабық." : "The cafe is currently closed."}
+      <div className="fixed top-0 left-0 right-0 z-50 text-center py-3 font-extrabold text-sm" style={{ background: "#fff", color: P.red, borderBottom: `2px solid ${P.red}`, height: CLOSED_BANNER_H }}>
+        {lang === "ru" ? "Кафе сейчас закрыто." : lang === "kz" ? "Кафе қазір жабық." : "The cafe is currently closed."}
       </div>
     )}
     {/* --- END CLOSED BANNER --- */}
 
-      {/* header */}
-      <header className="sticky top-0 z-40" style={{ background: "rgba(247,244,237,.92)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${P.line}` }}>
+      {/* header — offset below the closed banner so the banner never covers
+          the brand lockup (both are pinned to the top of the viewport) */}
+      <header className="sticky z-40" style={{ top: isClosed ? CLOSED_BANNER_H : 0, background: "rgba(250,245,236,.92)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${P.line}` }}>
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
           <a href="#top" className="flex items-center no-underline" style={{ color: P.txt }}>
-            <Logo h={44} />
+            <Logo h={40} responsive />
           </a>
-          <nav className="hidden sm:flex items-center gap-4 ml-4 text-sm font-bold">
+          <nav className="hidden md:flex items-center gap-4 ml-4 text-sm font-bold">
             <a href="#menu" style={{ color: P.sub }} className="no-underline hover:opacity-70">{t("menu")}</a>
             <a href="#about" style={{ color: P.sub }} className="no-underline hover:opacity-70">{t("about")}</a>
             <a href="#contacts" style={{ color: P.sub }} className="no-underline hover:opacity-70">{t("contacts")}</a>
@@ -2742,76 +2792,76 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
           <div className="ml-auto flex items-center gap-2">
             <button onClick={() => setLang(nextLang(lang))} className="text-xs font-extrabold px-3 py-1.5 rounded-full"
               style={{ background: P.card, border: `1px solid ${P.line}` }}>
-              🌐 {langCode(lang)}
+              {langCode(lang)}
             </button>
             <button onClick={openCart} className="flex items-center gap-2 text-sm font-extrabold px-4 py-2 rounded-full" style={{ background: P.ink, color: "#fff" }}>
-              🧺 {cartCount > 0 ? fmt(cartTotal) : t("cart")}
+              {cartCount > 0 ? fmt(cartTotal) : t("cart")}
               {cartCount > 0 && <span className="text-xs px-1.5 rounded-full" style={{ background: P.teal }}>{cartCount}</span>}
             </button>
             <button onClick={openBoard} className="flex items-center gap-2 text-sm font-extrabold px-4 py-2 rounded-full"
-              style={{ background: P.teal, color: "#fff", boxShadow: "0 2px 12px rgba(244,128,31,.35)" }}>
-              🧾 {t("allOrders")}
+              style={{ background: P.teal, color: "#fff", boxShadow: "0 2px 12px rgba(116,36,39,.35)" }}>
+              {t("allOrders")}
             </button>
           </div>
         </div>
       </header>
 
-      {/* hero — rebuilt to match the approved mockup: rich orange gradient
-          stage (#F07C22), scattered basil leaves, thin decorative arcs, and
-          the dish as a true CUTOUT (background removed from the photo with
-          AI matting) floating on the orange with a soft shadow — no photo
-          rectangle, no seams. CTA buttons stay black per the owner's ask.
-          If the cutout file is missing the image hides itself. */}
-      <section id="top" className="relative overflow-hidden" style={{ background: "linear-gradient(105deg, #F35A06 0%, #F47712 50%, #FA8619 100%)" }}>
-        {/* soft radial glow so the orange reads rich, not flat */}
+      {/* hero — the seal's own palette: a deep burgundy stage that fades into
+          the feast photograph on the right, brass laurel sprigs echoing the
+          wreath in the logo, and thin ivory arcs standing in for the seal's
+          concentric rings. The photo already ships with a dark burgundy
+          gradient baked into its left edge, so the mask blends seamlessly.
+          If the image is missing it hides itself and the gradient carries. */}
+      <section id="top" className="relative overflow-hidden" style={{ background: "linear-gradient(105deg, #1A1011 0%, #401113 46%, #742427 100%)" }}>
+        {/* soft brass glow so the burgundy reads rich, not flat */}
         <div className="absolute inset-0 pointer-events-none"
-          style={{ background: "radial-gradient(ellipse 62% 78% at 38% 38%, rgba(255,255,255,.11), rgba(255,255,255,0) 64%)" }} />
-        {/* thin decorative arcs, as in the mockup */}
-        <div className="absolute rounded-full pointer-events-none" style={{ width: 520, height: 520, left: -120, top: -420, border: "1.5px solid rgba(255,255,255,.12)" }} />
-        <div className="absolute rounded-full pointer-events-none" style={{ width: 430, height: 430, right: "43%", top: -300, border: "1.5px solid rgba(255,255,255,.11)" }} />
-        <div className="absolute rounded-full pointer-events-none" style={{ width: 420, height: 420, right: "23%", bottom: -310, border: "1.5px solid rgba(255,255,255,.08)" }} />
-        {/* basil leaves scattered like the mockup's corners */}
-        <BasilLeaf size={92} rotate={-62} style={{ left: -20, bottom: 58 }} />
-        <BasilLeaf size={46} rotate={38} style={{ left: 68, bottom: 72 }} />
-        <BasilLeaf size={40} rotate={48} style={{ right: "43%", top: 38 }} />
-        <BasilLeaf size={36} rotate={34} style={{ right: "7%", top: 48 }} />
-        {/* real hero background photo, faded into the orange stage */}
+          style={{ background: "radial-gradient(ellipse 62% 78% at 34% 40%, rgba(201,154,90,.16), rgba(201,154,90,0) 64%)" }} />
+        {/* thin concentric arcs, as on the seal */}
+        <div className="absolute rounded-full pointer-events-none" style={{ width: 520, height: 520, left: -120, top: -420, border: "1.5px solid rgba(250,245,236,.14)" }} />
+        <div className="absolute rounded-full pointer-events-none" style={{ width: 430, height: 430, right: "43%", top: -300, border: "1.5px solid rgba(201,154,90,.16)" }} />
+        <div className="absolute rounded-full pointer-events-none" style={{ width: 420, height: 420, right: "23%", bottom: -310, border: "1.5px solid rgba(250,245,236,.08)" }} />
+        {/* brass laurel sprigs from the wreath in the seal */}
+        <LaurelSprig size={104} rotate={-18} opacity={0.3} style={{ left: -22, bottom: 40 }} />
+        <LaurelSprig size={54} rotate={132} opacity={0.34} style={{ left: 74, bottom: 78 }} />
+        <LaurelSprig size={44} rotate={-140} opacity={0.28} style={{ right: "45%", top: 34 }} />
+        <LaurelSprig size={40} rotate={64} opacity={0.24} style={{ right: "7%", top: 46 }} />
+        {/* the feast photograph, faded into the burgundy stage */}
         <div className="hidden sm:block absolute pointer-events-none select-none"
           style={{ right: 0, top: 0, bottom: 0, width: "61%", maxWidth: 900, zIndex: 1 }}>
           <img src={HERO_IMAGE} alt="" aria-hidden="true"
             onError={(e) => { e.currentTarget.style.display = "none"; }}
             className="absolute inset-0 pointer-events-none select-none"
-            style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center", WebkitMaskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,.7) 13%, #000 30%, #000 100%)", maskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,.7) 13%, #000 30%, #000 100%)" }} />
+            style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "right center", WebkitMaskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,.7) 13%, #000 30%, #000 100%)", maskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,.7) 13%, #000 30%, #000 100%)" }} />
         </div>
-        <div className="relative max-w-5xl mx-auto px-4 pt-10 pb-9 sm:py-12">
+        <div className="relative max-w-5xl mx-auto px-4 pt-10 pb-9 sm:py-12" style={{ zIndex: 2 }}>
           <div className="max-w-2xl sm:max-w-[56%]">
             <div className="flex items-center gap-3 mb-4">
-              <Logo h={34} style={{ filter: "brightness(0.3)" }} />
-              <span className="text-xs font-extrabold tracking-widest uppercase" style={{ color: "rgba(46,20,3,.8)" }}>{L3(lang, "Sairam · Fast Food", "Сайрам · Быстрое питание", "Сайрам · Жылдам тамақ")}</span>
+              <Logo h={34} tone="light" wordmark={false} />
+              <span className="text-xs font-extrabold tracking-widest uppercase" style={{ color: P.saff }}>{L3(lang, "Sairam · Halal kitchen", "Сайрам · Халяльная кухня", "Сайрам · Халал ас")}</span>
             </div>
-            <h1 className="leading-tight" style={{ fontFamily: FONT_DISPLAY, color: "#fff", fontSize: "clamp(30px,4.9vw,48px)", fontWeight: 800, letterSpacing: 0 }}>
+            <h1 className="leading-tight" style={{ fontFamily: FONT_DISPLAY, color: "#fff", fontSize: "clamp(34px,5.6vw,58px)", fontWeight: 700, letterSpacing: "-.01em" }}>
               {t("tagline")}
             </h1>
-            <p className="mt-4 max-w-md" style={{ color: "rgba(255,255,255,.9)", fontSize: 15 }}>{t("heroText")}</p>
+            <p className="mt-4 max-w-md" style={{ color: "rgba(250,245,236,.82)", fontSize: 15, lineHeight: 1.7 }}>{t("heroText")}</p>
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              <a href="#menu" className="no-underline font-extrabold text-sm px-5 py-3 rounded-full" style={{ background: "#FFA232", color: "#fff", boxShadow: "0 12px 24px rgba(175,76,4,.28)" }}>
+              <a href="#menu" className="no-underline font-extrabold text-sm px-5 py-3 rounded-full" style={{ background: P.saff, color: P.txt, boxShadow: "0 12px 28px rgba(0,0,0,.32)" }}>
                 {t("seeMenu")} ↓
               </a>
-              <button onClick={openBooking} className="font-extrabold text-sm px-5 py-3 rounded-full" style={{ background: "rgba(255,246,228,.86)", color: P.txt, boxShadow: "0 12px 24px rgba(175,76,4,.18)" }}>
-                🍽 {t("book")}
+              <button onClick={openBooking} className="font-extrabold text-sm px-5 py-3 rounded-full" style={{ background: "rgba(250,245,236,.12)", color: "#fff", border: "1px solid rgba(250,245,236,.3)", backdropFilter: "blur(4px)" }}>
+                {t("book")}
               </button>
-              <span className="text-xs font-bold px-3 py-2 rounded-full" style={{ background: "rgba(27,30,34,.9)", color: "#fff" }}>
-                <span style={{ color: "#3F7A2E" }}>●</span> {t("today")} {t("until")} 01:00
+              <span className="text-xs font-bold px-3 py-2 rounded-full" style={{ background: "rgba(26,16,17,.55)", color: "#fff", border: "1px solid rgba(250,245,236,.14)" }}>
+                <span style={{ color: "#7FBF63" }}>●</span> {t("today")} {t("until")} 01:00
               </span>
             </div>
           </div>
-          {/* the dish cutout — mobile: below the text, floating on orange */}
+          {/* the feast photograph — mobile: below the text, faded top and bottom */}
           <div className="sm:hidden relative pointer-events-none select-none -mx-5 mt-5 mb-[-2px] overflow-hidden"
             style={{ height: "min(62vw, 318px)" }}>
             <img src={HERO_IMAGE} alt="" aria-hidden="true"
               onError={(e) => { e.currentTarget.style.display = "none"; }}
               className="absolute inset-0 pointer-events-none select-none"
-              style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 50%", WebkitMaskImage: "linear-gradient(180deg, transparent 0%, rgba(0,0,0,.8) 11%, #000 25%, #000 88%, transparent 100%)", maskImage: "linear-gradient(180deg, transparent 0%, rgba(0,0,0,.8) 11%, #000 25%, #000 88%, transparent 100%)" }} />
+              style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "right center", WebkitMaskImage: "linear-gradient(180deg, transparent 0%, rgba(0,0,0,.8) 11%, #000 25%, #000 88%, transparent 100%)", maskImage: "linear-gradient(180deg, transparent 0%, rgba(0,0,0,.8) 11%, #000 25%, #000 88%, transparent 100%)" }} />
           </div>
         </div>
       </section>
@@ -2838,7 +2888,7 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
               image={item.image || GALLERY_MENU_IMAGES[item.id]} cart={cart} setQty={setQty} isClosed={isClosed} />
           ))}
           {filtered.length === 0 && (
-            <div className="col-span-full text-center py-12" style={{ color: P.sub }}>🔍 {L3(lang, "Nothing found", "Ничего не найдено", "Ештеңе табылмады")}</div>
+            <div className="col-span-full text-center py-12" style={{ color: P.sub }}>{L3(lang, "Nothing found", "Ничего не найдено", "Ештеңе табылмады")}</div>
           )}
         </div>
       </section>
@@ -2852,12 +2902,11 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
             <p className="mt-3 text-sm leading-relaxed" style={{ color: P.sub }}>{t("aboutText")}</p>
           </div>
           <div className="grid grid-cols-3 gap-3 text-center">
-            {[["🍽", "130+", L3(lang, "dishes on the menu", "блюд в меню", "мәзірдегі тағамдар")],
-              ["🕗", "08:00–01:00", L3(lang, "open daily", "ежедневно", "күн сайын ашық")],
-              ["⭐", "4.2", L3(lang, "2GIS rating", "рейтинг в 2ГИС", "2ГИС рейтингі")]].map(([e, n, l]) => (
-              <div key={l} className="rounded-2xl p-4" style={{ background: P.bone, border: `1px solid ${P.line}` }}>
-                <div style={{ fontSize: 26 }}>{e}</div>
-                <div className="font-extrabold mt-1" style={{ fontFamily: FONT_DISPLAY, fontSize: 16 }}>{n}</div>
+            {[["130+", L3(lang, "dishes on the menu", "блюд в меню", "мәзірдегі тағамдар")],
+              ["08:00–01:00", L3(lang, "open daily", "ежедневно", "күн сайын ашық")],
+              ["4.2", L3(lang, "2GIS rating", "рейтинг в 2ГИС", "2ГИС рейтингі")]].map(([n, l]) => (
+              <div key={l} className="rounded-2xl p-5" style={{ background: P.bone, border: `1px solid ${P.line}` }}>
+                <div className="font-extrabold" style={{ fontFamily: FONT_DISPLAY, fontSize: 24 }}>{n}</div>
                 <div className="text-xs mt-1" style={{ color: P.sub }}>{l}</div>
               </div>
             ))}
@@ -2869,22 +2918,22 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
       <footer id="contacts" style={{ background: P.ink }}>
         <div className="max-w-5xl mx-auto px-4 py-10 grid sm:grid-cols-3 gap-8">
           <div>
-            <Logo h={52} />
+            <Logo h={52} tone="light" />
             <p className="text-xs mt-3" style={{ color: "rgba(255,255,255,.55)" }}>{t("footAbout")}</p>
           </div>
           <div className="text-sm" style={{ color: "rgba(255,255,255,.8)" }}>
             <div className="font-extrabold mb-2" style={{ color: "#fff" }}>{t("contacts")}</div>
-            <div className="mb-1">📍 {t("address")}</div>
-            <div className="mb-1">🕗 {t("hours")}</div>
-            <div>📞 <a href="tel:+77785647777" style={{ color: "inherit" }}>+7 778 564 77 77</a></div>
+            <div className="mb-1">{t("address")}</div>
+            <div className="mb-1">{t("hours")}</div>
+            <div><a href="tel:+77785647777" style={{ color: "inherit" }}>+7 778 564 77 77</a></div>
             <button onClick={openPrivacy} className="mt-3 text-xs font-bold underline p-0" style={{ background: "none", color: "rgba(255,255,255,.65)" }}>
-              🔒 Политика конфиденциальности
+              Политика конфиденциальности
             </button>
           </div>
           <div className="text-sm">
             <div className="font-extrabold mb-2" style={{ color: "#fff" }}>{L3(lang, "For the team", "Команде", "Команда үшін")}</div>
             <button onClick={goAdmin} className="font-bold text-sm px-4 py-2 rounded-full" style={{ background: "rgba(255,255,255,.1)", color: "#fff", border: "1px solid rgba(255,255,255,.2)" }}>
-              🔐 {t("staff")} →
+              {t("staff")} →
             </button>
           </div>
         </div>
@@ -2901,8 +2950,7 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
       {/* cart nudge pill — appears when items added but no active order */}
       {cartCount > 0 && !activeLive && (
         <button onClick={openCart} className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-5 py-3 rounded-full font-bold text-sm"
-          style={{ background: P.teal, color: "#fff", boxShadow: "0 4px 24px rgba(244,128,31,.45)" }}>
-          <span style={{ fontSize: 18 }}>🧺</span>
+          style={{ background: P.teal, color: "#fff", boxShadow: "0 4px 24px rgba(116,36,39,.45)" }}>
           <span>{fmt(cartTotal)}</span>
           <span style={{ opacity: 0.85, fontWeight: 400 }}>·</span>
           <span style={{ opacity: 0.85, fontWeight: 400 }}>
@@ -2950,7 +2998,7 @@ function PinGate({ onOk, lang, goSite }) {
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: P.ink }}>
       <div className="w-full max-w-xs rounded-2xl p-6 text-center" style={{ background: P.ink2, border: "1px solid rgba(255,255,255,.1)" }}>
-        <Logo h={60} className="mx-auto" />
+        <Logo h={60} className="mx-auto" tone="light" />
         <div className="text-xs mt-3 mb-4" style={{ color: "rgba(255,255,255,.5)" }}>
           {lang === "en" ? "Staff · Sign in to manage the café" : "Персонал · Войдите для управления кафе"}
         </div>
@@ -3005,7 +3053,7 @@ function PrepTimeModal({ lang, onClose, onStart }) {
       <div className="relative w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-5" style={{ background: P.bone }}>
         <div className="flex items-center justify-between mb-4">
           <div className="font-extrabold" style={{ fontFamily: FONT_DISPLAY, color: P.txt }}>
-            ⏱ {L("Estimated preparation time", "Примерное время приготовления")}
+            {L("Estimated preparation time", "Примерное время приготовления")}
           </div>
           <button onClick={onClose} className="w-9 h-9 rounded-full font-bold" style={{ background: P.card, border: `1px solid ${P.line}` }}>✕</button>
         </div>
@@ -3029,7 +3077,7 @@ function PrepTimeModal({ lang, onClose, onStart }) {
           </button>
           <button disabled={!ok} onClick={() => onStart(chosen)} className="flex-1 py-3 rounded-xl font-extrabold"
             style={{ background: ok ? P.teal : P.line, color: ok ? "#fff" : P.sub }}>
-            🍳 {L("Start Cooking", "Начать готовить")}
+            {L("Start Cooking", "Начать готовить")}
           </button>
         </div>
       </div>
@@ -3043,7 +3091,7 @@ function PrepCountdownAdmin({ o, lang }) {
   const left = prepMinutesLeft(o.estimated_ready_at, now);
   return (
     <div className="text-xs font-bold mt-2 rounded-lg px-3 py-2 inline-block" style={{ background: "#FBEFD9", color: "#8A5A12" }}>
-      ⏱ {left > 0
+      {left > 0
         ? (lang === "en" ? `Ready in approximately ${left} min` : `Готов примерно через ${left} мин`)
         : (lang === "en" ? "Time is up — mark it ready" : "Время вышло — отметьте готовность")}
       {o.preparation_minutes ? <span style={{ opacity: 0.7 }}> · {o.preparation_minutes} {lang === "en" ? "min total" : "мин всего"}</span> : null}
@@ -3099,16 +3147,16 @@ function OrderCard({ o, lang, onStatus, onEditItems, onAckCall, onBookingEnd }) 
         <div className="font-extrabold" style={{ fontFamily: FONT_DISPLAY, fontSize: 15 }}>№{o.num}</div>
         <div className="flex items-center gap-1.5">
           {o.paymentMethod === "kaspi" && <Pill bg="#FDE3E0" fg="#C0281C">KASPI</Pill>}
-          {isSched && <Pill bg="#FBEFD9" fg="#8A5A12">⏰ {timeOf(scheduledFor)}</Pill>}
+          {isSched && <Pill bg="#FBEFD9" fg="#8A5A12">{timeOf(scheduledFor)}</Pill>}
           <StatusPill s={o.status} lang={lang} />
         </div>
       </div>
       {needsCall && (
         <div className="mt-2 rounded-xl p-3 text-sm" style={{ background: "#FAE5E3", border: "1px solid #E7A9A3" }}>
-          <div className="font-extrabold" style={{ color: "#933A34" }}>📞 {tr(lang, "callConfirm")}</div>
+          <div className="font-extrabold" style={{ color: "#933A34" }}>{tr(lang, "callConfirm")}</div>
           <div className="text-xs mt-0.5" style={{ color: "#933A34" }}>{tr(lang, "callConfirmNote")}</div>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
-            {o.phone && <a href={`tel:${o.phone}`} className="no-underline text-xs font-extrabold px-3 py-1.5 rounded-full" style={{ background: "#933A34", color: "#fff" }}>📞 {o.phone}</a>}
+            {o.phone && <a href={`tel:${o.phone}`} className="no-underline text-xs font-extrabold px-3 py-1.5 rounded-full" style={{ background: "#933A34", color: "#fff" }}>{o.phone}</a>}
             <button onClick={() => onAckCall && onAckCall(o.id)} className="text-xs font-bold px-3 py-1.5 rounded-full" style={{ background: "#fff", border: "1px solid #E7A9A3", color: "#933A34" }}>✓ {tr(lang, "callDone")}</button>
           </div>
         </div>
@@ -3120,10 +3168,10 @@ function OrderCard({ o, lang, onStatus, onEditItems, onAckCall, onBookingEnd }) 
       )}
       <div className="text-xs mt-1" style={{ color: P.sub }}>
         {dateOf(o.ts)} · {timeOf(o.ts)} · {
-          o.type === "booking" ? `🍽 ${lang === "en" ? "Reservation" : "Бронь"}${o.phone ? " · " + o.phone : ""}`
-          : o.type === "table" ? `🍽 ${lang === "en" ? "Table" : "Стол"} ${o.table}`
-          : o.type === "delivery" ? `🚗 ${lang === "en" ? "Delivery" : "Доставка"}${o.name ? " · " + o.name : ""}${o.phone ? " · " + o.phone : ""}`
-          : `🥡 ${lang === "en" ? "Pickup" : "С собой"}${o.name ? " · " + o.name : ""}${o.phone ? " · " + o.phone : ""}`
+          o.type === "booking" ? `${lang === "en" ? "Reservation" : "Бронь"}${o.phone ? " · " + o.phone : ""}`
+          : o.type === "table" ? `${lang === "en" ? "Table" : "Стол"} ${o.table}`
+          : o.type === "delivery" ? `${lang === "en" ? "Delivery" : "Доставка"}${o.name ? " · " + o.name : ""}${o.phone ? " · " + o.phone : ""}`
+          : `${lang === "en" ? "Pickup" : "С собой"}${o.name ? " · " + o.name : ""}${o.phone ? " · " + o.phone : ""}`
         }
       </div>
       {(o.iikoSent || o.iikoError) && (
@@ -3134,32 +3182,32 @@ function OrderCard({ o, lang, onStatus, onEditItems, onAckCall, onBookingEnd }) 
             </span>
           ) : (
             <span className="text-xs font-bold px-2 py-1 rounded-full" title={o.iikoError || ""} style={{ background: "#FAE5E3", color: "#933A34" }}>
-              ⚠ {L3(lang, "Not sent to iiko", "Не ушёл в iiko", "iiko-ға кетпеді")}
+              {L3(lang, "Not sent to iiko", "Не ушёл в iiko", "iiko-ға кетпеді")}
             </span>
           )}
         </div>
       )}
       {o.type === "booking" && o.booking && (
         <div className="mt-2 rounded-xl p-3 text-sm" style={{ background: "#FBEFD9", border: `1px solid ${P.saff}` }}>
-          <div className="font-extrabold" style={{ color: "#8A5A12" }}>🍽 {pickL(o.booking.roomName, lang)} · 👥 {lang === "en" ? "up to" : "до"} {o.booking.capacity}</div>
+          <div className="font-extrabold" style={{ color: "#8A5A12" }}>{pickL(o.booking.roomName, lang)} · {lang === "en" ? "up to" : "до"} {o.booking.capacity}</div>
           <div className="mt-1 font-bold" style={{ color: P.txt }}>
-            📅 {o.booking.date} · 🕒 {o.booking.time}
+            {o.booking.date} · {o.booking.time}
             {bookingEndSaved ? ` → ${bookingEndSaved}` : ` → ${lang === "en" ? "~3 h (default)" : "≈3 ч (по умолчанию)"}`}
-            {o.booking.guests ? ` · 👥 ${o.booking.guests}` : ""}
+            {o.booking.guests ? ` · ${o.booking.guests}` : ""}
           </div>
-          <div style={{ color: P.txt }}>📞 {o.booking.phone}</div>
+          <div style={{ color: P.txt }}>{o.booking.phone}</div>
           {/* The table frees up (and blocks earlier clients correctly) only
               when the real departure time is saved — ask during the call. */}
           {!["done", "cancelled"].includes(o.status) && (
             <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <span className="text-xs font-bold" style={{ color: "#8A5A12" }}>🕒 {lang === "en" ? "Leaving at" : "Уйдут в"}:</span>
+              <span className="text-xs font-bold" style={{ color: "#8A5A12" }}>{lang === "en" ? "Leaving at" : "Уйдут в"}:</span>
               <input type="time" value={endT} onChange={(e) => setEndT(e.target.value)}
                 className="text-xs font-bold px-2 py-1.5 rounded-lg outline-none"
                 style={{ background: "#fff", border: `1px solid ${P.saff}`, color: P.txt }} />
               <button onClick={saveEnd} disabled={!endT || endT === bookingEndSaved || endSaving}
                 className="text-xs font-extrabold px-3 py-1.5 rounded-full"
                 style={{ background: (!endT || endT === bookingEndSaved) ? P.line : P.teal, color: (!endT || endT === bookingEndSaved) ? P.sub : "#fff" }}>
-                {endSaving ? "…" : `💾 ${lang === "en" ? "Save" : "Сохранить"}`}
+                {endSaving ? "…" : `${lang === "en" ? "Save" : "Сохранить"}`}
               </button>
             </div>
           )}
@@ -3169,17 +3217,17 @@ function OrderCard({ o, lang, onStatus, onEditItems, onAckCall, onBookingEnd }) 
         </div>
       )}
       {o.type === "delivery" && (
-        <div className="mt-2 rounded-xl p-3 text-sm" style={{ background: "#EAF4F2", border: `1px solid ${P.line}` }}>
-          {o.address && <div className="font-bold" style={{ color: P.txt }}>📍 {o.address}</div>}
+        <div className="mt-2 rounded-xl p-3 text-sm" style={{ background: "#F4EDE2", border: `1px solid ${P.line}` }}>
+          {o.address && <div className="font-bold" style={{ color: P.txt }}>{o.address}</div>}
           {(o.lat != null && o.lng != null) ? (
             <div className="flex gap-2 mt-2 flex-wrap items-center">
               <a href={o.mapLink || `https://2gis.kz/geo/${o.lng},${o.lat}`} target="_blank" rel="noreferrer"
                 className="no-underline text-xs font-extrabold px-3 py-1.5 rounded-full" style={{ background: "#1BA05A", color: "#fff" }}>
-                🧭 {lang === "en" ? "Open in 2GIS" : "Открыть в 2ГИС"}
+                {lang === "en" ? "Open in 2GIS" : "Открыть в 2ГИС"}
               </a>
               <a href={o.mapLinkGoogle || `https://maps.google.com/?q=${o.lat},${o.lng}`} target="_blank" rel="noreferrer"
                 className="no-underline text-xs font-bold px-3 py-1.5 rounded-full" style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt }}>
-                🗺 Google
+                Google
               </a>
               <span className="text-xs px-2 py-1.5" style={{ color: P.sub }}>{o.lat.toFixed(5)}, {o.lng.toFixed(5)}</span>
             </div>
@@ -3200,7 +3248,7 @@ function OrderCard({ o, lang, onStatus, onEditItems, onAckCall, onBookingEnd }) 
             <OrderPriceBreakdown order={o} t={(k) => tr(lang, k)} />
           </div>
         )}
-        {o.comment && <div className="text-xs mt-2 font-bold" style={{ color: P.tealD }}>💬 {o.comment}</div>}
+        {o.comment && <div className="text-xs mt-2 font-bold" style={{ color: P.tealD }}>{o.comment}</div>}
       </div>
       {o.type !== "table" && o.status === "cooking" && o.estimated_ready_at && <PrepCountdownAdmin o={o} lang={lang} />}
       {/* EDIT ITEMS BUTTON */}
@@ -3410,7 +3458,6 @@ function OrderItemEditor({ order, menu, lang, onClose, onSave }) {
         <div className="grid grid-cols-2 gap-2 mb-4 max-h-40 overflow-y-auto p-1" style={{ border: `1px solid ${P.line}`, borderRadius: 12 }}>
           {menu.filter(m => m.available).map(m => (
             <button key={m.id} onClick={() => addItem(m)} className="text-left text-xs p-2 rounded-lg flex gap-2" style={{ background: P.bone }}>
-              <span>{m.emoji}</span>
               <span className="truncate">{pickL(m.name, lang)}</span>
             </button>
           ))}
@@ -3581,7 +3628,7 @@ function IikoMenuEditor({ lang }) {
                       {cur(it, "image")
                         ? <img src={cur(it, "image")} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         : <span style={{ fontSize: 22 }}>{it.emoji || "🍽"}</span>}
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "rgba(0,0,0,.45)" }}><span style={{ fontSize: 15 }}>📷</span></div>
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "rgba(0,0,0,.45)" }}><span className="text-[10px] font-extrabold uppercase tracking-wide" style={{ color: "#fff" }}>{L("Photo", "Фото")}</span></div>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-sm truncate" style={{ color: P.txt }}>
@@ -3595,12 +3642,12 @@ function IikoMenuEditor({ lang }) {
                           className="text-xs px-2 py-1.5 rounded-lg outline-none" style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt, width: 150 }} />
                         <button type="button" onClick={() => setOpenId(isOpen ? null : it.iikoId)}
                           className="text-xs font-bold px-2.5 py-1.5 rounded-lg" style={{ background: isOpen ? P.ink : P.bone, color: isOpen ? "#fff" : P.sub, border: `1px solid ${P.line}` }}>
-                          💬 {L("Description", "Описание")} {isOpen ? "▲" : "▼"}
+                          {L("Description", "Описание")} {isOpen ? "▲" : "▼"}
                         </button>
                         <button type="button" disabled={savingId === it.iikoId} onClick={() => toggleDelivery(it)}
                           className="text-xs font-bold px-2.5 py-1.5 rounded-lg"
                           style={{ background: it.deliveryAvailable ? "#E9F1DF" : "#FAE5E3", color: it.deliveryAvailable ? "#3F7A2E" : "#933A34", border: `1px solid ${it.deliveryAvailable ? "#BFD8A8" : "#E7A9A3"}` }}>
-                          {it.deliveryAvailable ? `🚚 ${L("Deliverable", "Можно заказать")}` : `🍽 ${L("Dine-in only", "Только в зале")}`}
+                          {it.deliveryAvailable ? `${L("Deliverable", "Можно заказать")}` : `${L("Dine-in only", "Только в зале")}`}
                         </button>
                       </div>
                       {cur(it, "image") && <button onClick={() => set(it, "image", null)} className="text-xs mt-1" style={{ color: P.red }}>{L("Remove photo", "Удалить фото")}</button>}
@@ -3860,13 +3907,13 @@ const handleSaveItems = async (id, items, total) => {
     <div style={{ background: P.bone, minHeight: "100vh", color: P.txt }}>
       <header className="sticky top-0 z-40" style={{ background: P.ink }}>
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <Logo h={34} />
+          <Logo h={34} tone="light" />
           <span className="font-extrabold text-sm" style={{ fontFamily: FONT_DISPLAY, color: "#fff" }}>
             · {L("Admin", "Админка")}
           </span>
           <div className="ml-auto flex items-center gap-2">
             <button onClick={() => setLang(nextLang(lang))} className="text-xs font-extrabold px-3 py-1.5 rounded-full" style={{ background: "rgba(255,255,255,.12)", color: "#fff" }}>
-              🌐 {langCode(lang)}
+              {langCode(lang)}
             </button>
             <button onClick={goSite} className="text-xs font-bold px-3 py-1.5 rounded-full" style={{ background: "rgba(255,255,255,.12)", color: "#fff" }}>
               ← {L("Site", "Сайт")}
@@ -3884,7 +3931,7 @@ const handleSaveItems = async (id, items, total) => {
              onClick={() => { localStorage.removeItem("aspan-token"); window.location.reload(); }}
              className="text-xs font-bold px-3 py-1.5 rounded-full"
              style={{ background: "rgba(255,255,255,.12)", color: "#fff" }}>
-  🚪         {L("Logout", "Выйти")}
+          {L("Logout", "Выйти")}
             </button>
         </div>
       </header>
@@ -3894,13 +3941,9 @@ const handleSaveItems = async (id, items, total) => {
           <div className="px-4 py-3 flex items-center gap-3 flex-wrap"
             style={{ background: "#C0392B", color: "#fff", animation: "pulse 1.2s ease-in-out infinite" }}>
             <span className="font-extrabold text-sm">
-              🔔 {unackedOrders.length === 1
+              {unackedOrders.length === 1
                 ? `${L("New order", "Новый заказ")} №${unackedOrders[0].num}`
                 : `${L("New orders", "Новых заказов")}: ${unackedOrders.length}`}
-              {" · "}
-              {unackedOrders.slice(0, 4).map((o) => (
-                { table: "🍽", pickup: "🥡", delivery: "🚚", booking: "📅" }[o.type] || "❓"
-              )).join(" ")}
             </span>
             <button onClick={() => { setTab("orders"); setFilter("all"); }}
               className="text-xs font-extrabold px-3 py-1.5 rounded-full"
@@ -3946,7 +3989,6 @@ const handleSaveItems = async (id, items, total) => {
             </div>
             {shown.length === 0 ? (
               <div className="text-center py-16" style={{ color: P.sub }}>
-                <div style={{ fontSize: 40 }}>🔔</div>
                 <div className="font-bold mt-2">{L("No orders here yet", "Заказов пока нет")}</div>
                 <div className="text-xs mt-1">{L("New orders from the site appear automatically.", "Новые заказы с сайта появятся автоматически.")}</div>
               </div>
@@ -3954,7 +3996,7 @@ const handleSaveItems = async (id, items, total) => {
               <>
                 {splitQueue && scheduledOrders.length > 0 && (
                   <div className="mb-6">
-                    <div className="text-sm font-extrabold mb-3" style={{ color: "#8A5A12" }}>⏰ {tr(lang, "schedSection")} · {scheduledOrders.length}</div>
+                    <div className="text-sm font-extrabold mb-3" style={{ color: "#8A5A12" }}>{tr(lang, "schedSection")} · {scheduledOrders.length}</div>
                     <div className="grid sm:grid-cols-2 gap-4">
                       {scheduledOrders.map((o) => (
                         <OrderCard key={o.id} o={o} lang={lang} onStatus={updateStatus} onAckCall={ackCall} onBookingEnd={setBookingEnd} onEditItems={() => setEditingOrderItems(o)} />
@@ -3963,7 +4005,7 @@ const handleSaveItems = async (id, items, total) => {
                   </div>
                 )}
                 {splitQueue && scheduledOrders.length > 0 && liveOrders.length > 0 && (
-                  <div className="text-sm font-extrabold mb-3" style={{ color: P.txt }}>🔥 {tr(lang, "activeSection")} · {liveOrders.length}</div>
+                  <div className="text-sm font-extrabold mb-3" style={{ color: P.txt }}>{tr(lang, "activeSection")} · {liveOrders.length}</div>
                 )}
                 <div className="grid sm:grid-cols-2 gap-4">
                   {liveOrders.map((o) => (
@@ -4040,7 +4082,7 @@ const handleSaveItems = async (id, items, total) => {
                             <span style={{ fontSize: 24 }}>{m.emoji}</span>
                           )}
                           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "rgba(0,0,0,.45)" }}>
-                            <span style={{ fontSize: 16 }}>📷</span>
+                            <span className="text-[10px] font-extrabold uppercase tracking-wide" style={{ color: "#fff" }}>{L("Photo", "Фото")}</span>
                           </div>
                         </div>
                         <div className="flex-1 min-w-0">
@@ -4070,7 +4112,7 @@ const handleSaveItems = async (id, items, total) => {
                           {m.available ? L("On menu", "В меню") : L("Stopped", "Стоп")}
                         </button>
                         <button onClick={() => setEditing(m)} className="text-xs font-bold px-3 py-1.5 rounded-full" style={{ background: P.bone, border: `1px solid ${P.line}` }}>
-                          ✎
+                          {L("Edit", "Изменить")}
                         </button>
                         {confirmDel === m.id ? (
                           <button onClick={() => { saveMenu(menu.filter((x) => x.id !== m.id)); setConfirmDel(null); }}
@@ -4080,7 +4122,7 @@ const handleSaveItems = async (id, items, total) => {
                         ) : (
                           <button onClick={() => { setConfirmDel(m.id); setTimeout(() => setConfirmDel(null), 2500); }}
                             className="text-xs font-bold px-3 py-1.5 rounded-full" style={{ background: "#FAE5E3", color: "#933A34" }}>
-                            🗑
+                            {L("Delete", "Удалить")}
                           </button>
                         )}
                       </div>
@@ -4175,7 +4217,7 @@ const handleSaveItems = async (id, items, total) => {
                   </div>
                   <button onClick={settle} disabled={settling || !ledger || ledger.balance <= 0}
                     className="w-full py-3 rounded-xl font-extrabold mb-4"
-                    style={{ background: (!ledger || ledger.balance <= 0) ? P.line : P.saff, color: "#26292E", opacity: settling ? 0.6 : 1 }}>
+                    style={{ background: (!ledger || ledger.balance <= 0) ? P.line : P.saff, color: "#241819", opacity: settling ? 0.6 : 1 }}>
                     {settling ? "…" : `${L("Reset balance / Mark as paid", "Сбросить баланс / Отметить как оплачено")} (${ledger ? fmt(ledger.balance) : "…"})`}
                   </button>
 
@@ -4185,7 +4227,7 @@ const handleSaveItems = async (id, items, total) => {
                     {ledger && ledger.history.map((h, i) => (
                       <div key={i} className="flex items-center justify-between text-xs rounded-lg px-3 py-2" style={{ background: P.bone }}>
                         <span style={{ color: P.sub }}>
-                          {dateOf(h.ts)} {timeOf(h.ts)} · {h.type === "accrual" ? `➕ ${h.note || L("Commission", "Комиссия")}` : `💸 ${L("Payout", "Выплата")}`}
+                          {dateOf(h.ts)} {timeOf(h.ts)} · {h.type === "accrual" ? `${h.note || L("Commission", "Комиссия")}` : `${L("Payout", "Выплата")}`}
                         </span>
                         <span className="font-bold" style={{ color: h.type === "accrual" ? "#3F7A2E" : "#933A34" }}>
                           {h.type === "accrual" ? "+" : "−"}{fmt(h.amount)}
@@ -4214,7 +4256,7 @@ const handleSaveItems = async (id, items, total) => {
             </div>
             <div className="text-xs font-bold mb-6" style={{ color: cafeInfo.effectiveOpen === false ? "#933A34" : "#3F7A2E" }}>
               {cafeInfo.effectiveOpen === false
-                ? L("🔒 Currently closed for orders (outside hours or manually closed)", "🔒 Сейчас заказы не принимаются (нерабочее время или закрыто вручную)")
+                ? L("Currently closed for orders (outside hours or manually closed)", "Сейчас заказы не принимаются (нерабочее время или закрыто вручную)")
                 : L("✓ Currently accepting orders", "✓ Сейчас заказы принимаются")}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -4234,12 +4276,12 @@ const handleSaveItems = async (id, items, total) => {
             </div>
             <button onClick={saveHours} className="mt-3 px-6 py-2.5 rounded-full font-extrabold text-sm"
               style={{ background: P.teal, color: "#fff" }}>
-              💾 {L("Save hours", "Сохранить часы")}
+              {L("Save hours", "Сохранить часы")}
             </button>
 
             {/* Delivery fee rings: fees are fixed (0/300/500 ₸), staff tune
                 only the radii. The customer map draws these same circles. */}
-            <div className="font-extrabold mt-8 mb-1" style={{ fontFamily: FONT_DISPLAY, fontSize: 16 }}>🚚 {L("Delivery zones", "Зоны доставки")}</div>
+            <div className="font-extrabold mt-8 mb-1" style={{ fontFamily: FONT_DISPLAY, fontSize: 16 }}>{L("Delivery zones", "Зоны доставки")}</div>
             <div className="text-xs mb-3" style={{ color: P.sub }}>
               {L("The delivery price is set by which circle the client's map pin lands in. Outside the last circle delivery is refused.",
                  "Цена доставки определяется кругом, в который попадает точка клиента на карте. Вне последнего круга доставка недоступна.")}
@@ -4248,7 +4290,7 @@ const handleSaveItems = async (id, items, total) => {
               {deliveryCfgOf(cafeInfo).zones.map((z, i) => (
                 <div key={i} className="p-3 rounded-xl" style={{ background: P.bone }}>
                   <div className="text-xs font-extrabold mb-2" style={{ color: ["#3F7A2E", "#8A5A12", "#933A34"][i] }}>
-                    {["🟢", "🟡", "🔴"][i]} {z.fee === 0 ? L("Free delivery", "Бесплатная доставка") : `${L("Delivery", "Доставка")} ${fmt(z.fee)}`}
+                    {z.fee === 0 ? L("Free delivery", "Бесплатная доставка") : `${L("Delivery", "Доставка")} ${fmt(z.fee)}`}
                   </div>
                   <div className="flex items-center gap-2">
                     <input type="number" min="0.1" step="0.1" inputMode="decimal"
@@ -4263,7 +4305,7 @@ const handleSaveItems = async (id, items, total) => {
             </div>
             <button onClick={saveZones} className="mt-3 px-6 py-2.5 rounded-full font-extrabold text-sm"
               style={{ background: P.teal, color: "#fff" }}>
-              💾 {L("Save zones", "Сохранить зоны")}
+              {L("Save zones", "Сохранить зоны")}
             </button>
 
             {/* Part 2: stop-list for table reservations. A stopped capacity is
@@ -4308,7 +4350,7 @@ const handleSaveItems = async (id, items, total) => {
             </div>
             <button onClick={saveTableCounts} className="mt-3 px-6 py-2.5 rounded-full font-extrabold text-sm"
               style={{ background: P.teal, color: "#fff" }}>
-              💾 {L("Save table quantities", "Сохранить количество столиков")}
+              {L("Save table quantities", "Сохранить количество столиков")}
             </button>
           </div>
         )}
@@ -4507,16 +4549,18 @@ export default function App() {
   return (
     <div style={{ fontFamily: FONT_BODY }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Manrope:wght@400;500;700;800&display=swap');
         * { box-sizing: border-box; }
-        ::placeholder { color: #9aa2ad; }
+        ::placeholder { color: #A99C92; }
         button { cursor: pointer; border: none; font-family: inherit; }
         a { color: inherit; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.75; } }
         @keyframes consentShake { 10%,90%{transform:translateX(-1px)} 20%,80%{transform:translateX(2px)} 30%,50%,70%{transform:translateX(-5px)} 40%,60%{transform:translateX(5px)} }
         .consent-shake { animation: consentShake .5s cubic-bezier(.36,.07,.19,.97); }
-        .consent-box:focus-within .consent-tick { outline: 2px solid #F4801F; outline-offset: 2px; }
+        .consent-box:focus-within .consent-tick { outline: 2px solid #742427; outline-offset: 2px; }
+        .brand-wordmark { display: none; }
+        @media (min-width: 640px) { .brand-wordmark { display: block; } }
       `}</style>
 
       {view === "site" ? (
