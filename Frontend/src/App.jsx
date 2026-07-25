@@ -36,24 +36,13 @@ const FONT_BODY = "'Manrope',system-ui,-apple-system,sans-serif";
 // Order matches the physical menu's page sequence (coffee page → sides/
 // breakfast/cold-coffee page → sushi bar page → mains/pizza/fast-food page).
 const CATS = [
-  { id: "coffee", en: "Coffee", ru: "Кофе", kz: "Кофе", tint: "#EFE1D4" },
-  { id: "addons", en: "Add-ons", ru: "Добавки", kz: "Қоспалар", tint: "#F4E9DC" },
-  { id: "tea", en: "Tea", ru: "Чай", kz: "Шай", tint: "#ECE6D5" },
-  { id: "drinks", en: "Drinks", ru: "Напитки", kz: "Сусындар", tint: "#F6E9D9" },
-  { id: "milkshakes", en: "Milkshakes", ru: "Милкшейки", kz: "Милкшейктер", tint: "#F6E6E3" },
-  { id: "smoothies", en: "Smoothies", ru: "Смузи", kz: "Смузи", tint: "#F1E4E4" },
-  { id: "sides", en: "Sides", ru: "Гарниры", kz: "Гарнирлер", tint: "#F2E7D8" },
-  { id: "breakfast", en: "Breakfast", ru: "Завтраки", kz: "Таңғы ас", tint: "#F7EBD8" },
-  { id: "sauces", en: "Sauces", ru: "Соусы", kz: "Соустар", tint: "#F0E2D6" },
-  { id: "lemonades", en: "Lemonades", ru: "Лимонады", kz: "Лимонадтар", tint: "#F2EDDC" },
-  { id: "seafood", en: "Seafood", ru: "Морепродукты", kz: "Теңіз өнімдері", tint: "#E9E5DB" },
-  { id: "coldcoffee", en: "Iced coffee", ru: "Холодный кофе", kz: "Тоңазытылған кофе", tint: "#EAE3D9" },
-  { id: "sushi", en: "Sushi", ru: "Суши", kz: "Суши", tint: "#EFE2DB" },
-  { id: "soups", en: "Soups", ru: "Первые блюда", kz: "Бірінші тағамдар", tint: "#F5E5DB" },
-  { id: "mains", en: "Mains", ru: "Вторые блюда", kz: "Негізгі тағамдар", tint: "#EDE3D3" },
+  { id: "combo", en: "Skewer combos", ru: "Шашлык комбо", kz: "Шашлық комбо", tint: "#F6E2DD" },
+  { id: "shashlyk", en: "Skewers", ru: "Шашлык", kz: "Шашлық", tint: "#EFE1D4" },
+  { id: "soups", en: "First courses", ru: "Первые блюда", kz: "Бірінші тағамдар", tint: "#F5E5DB" },
+  { id: "mains", en: "Main courses", ru: "Вторые блюда", kz: "Негізгі тағамдар", tint: "#EDE3D3" },
   { id: "salads", en: "Salads", ru: "Салаты", kz: "Салаттар", tint: "#E9E8D8" },
-  { id: "pizza", en: "Pizza", ru: "Пицца", kz: "Пицца", tint: "#F6E2DD" },
-  { id: "fastfood", en: "Fast food", ru: "Фаст-фуд", kz: "Фаст-фуд", tint: "#F5E8D3" },
+  { id: "cold", en: "Cold drinks", ru: "Холодные напитки", kz: "Салқын сусындар", tint: "#EAE3D9" },
+  { id: "hot", en: "Hot drinks", ru: "Горячие напитки", kz: "Ыстық сусындар", tint: "#EFE1D4" },
 ];
 
 const TAGS = {
@@ -74,458 +63,126 @@ const STATUS = {
 };
 
 const SEED = [
-  // ── Coffee ──
-  { id: "cf1", cat: "coffee", emoji: "☕", price: 590, tags: ["hit"], available: true,
-    name: { en: "Espresso 36ml", ru: "Эспрессо 36мл", kz: "Эспрессо 36мл" },
-    desc: { en: "Single shot, classic roast.", ru: "Одна порция, классическая обжарка.", kz: "Бір шот, классикалық қуырылған." } },
-  { id: "cf2", cat: "coffee", emoji: "🥛", price: 990, tags: ["hit"], available: true,
-    name: { en: "Flat white", ru: "Флэт уайт", kz: "Флэт уайт" },
-    desc: { en: "Espresso with velvety steamed milk.", ru: "Эспрессо с бархатным молоком.", kz: "Эспрессо мен барқыт сүт." } },
-  { id: "cf3", cat: "coffee", emoji: "☕", price: 990, tags: [], available: true,
-    sizes: [{ label: "0.3л", price: 990 }, { label: "0.4л", price: 1190 }],
-    name: { en: "Americano", ru: "Американо", kz: "Американо" },
-    desc: { en: "Espresso with hot water.", ru: "Эспрессо с горячей водой.", kz: "Ыстық сумен эспрессо." } },
-  { id: "cf5", cat: "coffee", emoji: "☕", price: 990, tags: [], available: true,
-    sizes: [{ label: "0.3л", price: 990 }, { label: "0.4л", price: 1190 }],
-    name: { en: "Cappuccino", ru: "Капучино", kz: "Капучино" },
-    desc: { en: "Espresso, steamed milk, dense foam.", ru: "Эспрессо, молоко, плотная пена.", kz: "Эспрессо, сүт, қою көбік." } },
-  { id: "cf7", cat: "coffee", emoji: "☕", price: 990, tags: [], available: true,
-    sizes: [{ label: "0.3л", price: 990 }, { label: "0.4л", price: 1190 }],
-    name: { en: "Latte", ru: "Латте", kz: "Латте" },
-    desc: { en: "Espresso with lots of steamed milk.", ru: "Эспрессо с большим количеством молока.", kz: "Көп сүтпен эспрессо." } },
-  { id: "cf9", cat: "coffee", emoji: "🍫", price: 1090, tags: [], available: true,
-    sizes: [{ label: "0.3л", price: 1090 }, { label: "0.4л", price: 1190 }],
-    name: { en: "Mocha", ru: "Мокко", kz: "Мокко" },
-    desc: { en: "Espresso, chocolate, steamed milk.", ru: "Эспрессо, шоколад, молоко.", kz: "Эспрессо, шоколад, сүт." } },
-  { id: "cf11", cat: "coffee", emoji: "🍫", price: 1090, tags: [], available: true,
-    sizes: [{ label: "0.3л", price: 1090 }, { label: "0.4л", price: 1290 }],
-    name: { en: "Hot chocolate", ru: "Горячий шоколад", kz: "Ыстық шоколад" },
-    desc: { en: "Rich melted chocolate drink.", ru: "Насыщенный напиток из шоколада.", kz: "Қою шоколад сусыны." } },
-
-  // ── Add-ons ──
-  { id: "ad1", cat: "addons", emoji: "🍋", price: 400, tags: [], available: true,
-    name: { en: "Lemon", ru: "Лимон", kz: "Лимон" },
-    desc: { en: "Fresh lemon slice add-on.", ru: "Добавка — свежий лимон.", kz: "Қосымша — жаңа піскен лимон." } },
-  { id: "ad2", cat: "addons", emoji: "🍯", price: 100, tags: [], available: true,
-    name: { en: "Syrup", ru: "Сироп", kz: "Сироп" },
-    desc: { en: "Flavored syrup add-on.", ru: "Ароматный сироп на выбор.", kz: "Дәмі бар сироп." } },
-  { id: "ad3", cat: "addons", emoji: "🍯", price: 300, tags: [], available: true,
-    name: { en: "Honey", ru: "Мёд", kz: "Бал" },
-    desc: { en: "Natural honey add-on.", ru: "Натуральный мёд.", kz: "Табиғи бал." } },
-  { id: "ad4", cat: "addons", emoji: "🥛", price: 300, tags: [], available: true,
-    name: { en: "Milk", ru: "Молоко", kz: "Сүт" },
-    desc: { en: "Extra milk add-on.", ru: "Дополнительное молоко.", kz: "Қосымша сүт." } },
-
-  // ── Tea ──
-  { id: "te1", cat: "tea", emoji: "🍵", price: 200, tags: [], available: true,
-    sizes: [{ label: "0.4л", price: 200 }, { label: "1л", price: 400 }],
-    name: { en: "Black tea", ru: "Чёрный чай", kz: "Қара шай" },
-    desc: { en: "Classic black tea.", ru: "Классический чёрный чай.", kz: "Классикалық қара шай." } },
-  { id: "te3", cat: "tea", emoji: "🍵", price: 200, tags: [], available: true,
-    sizes: [{ label: "0.4л", price: 200 }, { label: "1л", price: 400 }],
-    name: { en: "Green tea", ru: "Зелёный чай", kz: "Жасыл шай" },
-    desc: { en: "Classic green tea.", ru: "Классический зелёный чай.", kz: "Классикалық жасыл шай." } },
-  { id: "te5", cat: "tea", emoji: "🫖", price: 690, tags: [], available: true,
-    sizes: [{ label: "0.4л", price: 690 }, { label: "1л", price: 990 }],
-    name: { en: "Tashkent tea", ru: "Ташкентский чай", kz: "Ташкент шайы" },
-    desc: { en: "Green tea, lemon, mint, honey.", ru: "Зелёный чай, лимон, мята, мёд.", kz: "Жасыл шай, лимон, жалбыз, бал." } },
-  { id: "te7", cat: "tea", emoji: "🫖", price: 690, tags: [], available: true,
-    sizes: [{ label: "0.4л", price: 690 }, { label: "1л", price: 990 }],
-    name: { en: "Moroccan tea", ru: "Марокканский чай", kz: "Марокко шайы" },
-    desc: { en: "Green tea with fresh mint.", ru: "Зелёный чай со свежей мятой.", kz: "Жаңа піскен жалбызбен жасыл шай." } },
-  { id: "te9", cat: "tea", emoji: "🍓", price: 890, tags: [], available: true,
-    sizes: [{ label: "0.4л", price: 890 }, { label: "1л", price: 1290 }],
-    name: { en: "Berry tea", ru: "Ягодный чай", kz: "Жидек шайы" },
-    desc: { en: "Mixed berry fruit tea.", ru: "Ягодный фруктовый чай.", kz: "Жидекті жеміс шайы." } },
-  { id: "te11", cat: "tea", emoji: "🍎", price: 890, tags: [], available: true,
-    sizes: [{ label: "0.4л", price: 890 }, { label: "1л", price: 1290 }],
-    name: { en: "Fruit tea", ru: "Фруктовый чай", kz: "Жеміс шайы" },
-    desc: { en: "House fruit tea blend.", ru: "Фирменный фруктовый чай.", kz: "Фирмалық жеміс шайы." } },
-  { id: "te13", cat: "tea", emoji: "🍊", price: 890, tags: [], available: true,
-    sizes: [{ label: "0.4л", price: 890 }, { label: "1л", price: 1290 }],
-    name: { en: "Orange tea", ru: "Апельсиновый чай", kz: "Апельсин шайы" },
-    desc: { en: "Tea with orange notes.", ru: "Чай с апельсиновыми нотками.", kz: "Апельсин дәмі бар шай." } },
-
-  // ── Drinks ──
-  { id: "dr1", cat: "drinks", emoji: "🧃", price: 280, tags: [], available: true,
-    name: { en: "Piko kids", ru: "Пико детский", kz: "Пико балалар" },
-    desc: { en: "Small juice box.", ru: "Маленький сок в коробочке.", kz: "Кішкентай сөк қорабы." } },
-  { id: "dr2", cat: "drinks", emoji: "🧃", price: 800, tags: [], available: true,
-    name: { en: "Piko 1l", ru: "Пико 1л", kz: "Пико 1л" },
-    desc: { en: "Large juice, 1 liter.", ru: "Сок, 1 литр.", kz: "Сөк, 1 литр." } },
-  { id: "dr3", cat: "drinks", emoji: "⚡", price: 550, tags: [], available: true,
-    name: { en: "Gorilla Energy", ru: "Gorilla Energy", kz: "Gorilla Energy" },
-    desc: { en: "Energy drink.", ru: "Энергетический напиток.", kz: "Энергетикалық сусын." } },
-  { id: "dr4", cat: "drinks", emoji: "🧋", price: 600, tags: [], available: true,
-    name: { en: "Fuse Tea", ru: "Fuse Tea", kz: "Fuse Tea" },
-    desc: { en: "Iced tea drink.", ru: "Холодный чайный напиток.", kz: "Суық шай сусыны." } },
-  { id: "dr5", cat: "drinks", emoji: "🥤", price: 480, tags: [], available: true,
-    name: { en: "Fanta 1l", ru: "Fanta 1л", kz: "Fanta 1л" },
-    desc: { en: "Carbonated orange drink.", ru: "Газированный напиток.", kz: "Газдалған сусын." } },
-  { id: "dr6", cat: "drinks", emoji: "⚡", price: 500, tags: [], available: true,
-    name: { en: "Dizzy Energy", ru: "Dizzy Energy", kz: "Dizzy Energy" },
-    desc: { en: "Energy drink.", ru: "Энергетический напиток.", kz: "Энергетикалық сусын." } },
-  { id: "dr7", cat: "drinks", emoji: "💧", price: 320, tags: [], available: true,
-    name: { en: "Bonaqua 1l", ru: "Bonaqua 1л", kz: "Bonaqua 1л" },
-    desc: { en: "Still or sparkling water.", ru: "Питьевая вода.", kz: "Ауызсу." } },
-  { id: "dr8", cat: "drinks", emoji: "🥤", price: 420, tags: [], available: true,
-    name: { en: "Coca-Cola 0.5l", ru: "Coca-Cola 0.5л", kz: "Coca-Cola 0.5л" },
-    desc: { en: "Carbonated soft drink.", ru: "Газированный напиток.", kz: "Газдалған сусын." } },
-  { id: "dr9", cat: "drinks", emoji: "🥤", price: 600, tags: [], available: true,
-    name: { en: "Coca-Cola 1l", ru: "Coca-Cola 1л", kz: "Coca-Cola 1л" },
-    desc: { en: "Carbonated soft drink, 1 liter.", ru: "Газированный напиток, 1 литр.", kz: "Газдалған сусын, 1 литр." } },
-  { id: "dr10", cat: "drinks", emoji: "🥤", price: 440, tags: [], available: true,
-    name: { en: "Coca-Cola (glass)", ru: "Coca-Cola (стекло)", kz: "Coca-Cola (шыны)" },
-    desc: { en: "Glass bottle.", ru: "В стеклянной бутылке.", kz: "Шыны бөтелкеде." } },
-  { id: "dr11", cat: "drinks", emoji: "🥤", price: 550, tags: [], available: true,
-    name: { en: "Coca-Cola (can)", ru: "Coca-Cola (ж/б)", kz: "Coca-Cola (банка)" },
-    desc: { en: "Aluminum can.", ru: "В жестяной банке.", kz: "Темір банкада." } },
-
-  // ── Milkshakes ──
-  { id: "mk1", cat: "milkshakes", emoji: "🥤", price: 990, tags: [], available: true,
-    name: { en: "Classic milkshake", ru: "Классический", kz: "Классикалық" },
-    desc: { en: "Vanilla milkshake.", ru: "Ванильный милкшейк.", kz: "Ваниль милкшейгі." } },
-  { id: "mk2", cat: "milkshakes", emoji: "🍪", price: 1290, tags: [], available: true,
-    name: { en: "Oreo milkshake", ru: "Орео", kz: "Орео" },
-    desc: { en: "Milkshake with Oreo cookies.", ru: "Милкшейк с печеньем Орео.", kz: "Орео печеньесімен милкшейк." } },
-  { id: "mk3", cat: "milkshakes", emoji: "🍫", price: 1290, tags: [], available: true,
-    name: { en: "Snickers milkshake", ru: "Сникерс", kz: "Сникерс" },
-    desc: { en: "Milkshake with Snickers.", ru: "Милкшейк со Сникерсом.", kz: "Сникерспен милкшейк." } },
-  { id: "mk4", cat: "milkshakes", emoji: "🍌", price: 1290, tags: [], available: true,
-    name: { en: "Banana milkshake", ru: "Банановый", kz: "Банан" },
-    desc: { en: "Milkshake with fresh banana.", ru: "Милкшейк со свежим бананом.", kz: "Жаңа піскен банан милкшейгі." } },
-  { id: "mk5", cat: "milkshakes", emoji: "🍓", price: 1290, tags: [], available: true,
-    name: { en: "Strawberry milkshake", ru: "Клубничный", kz: "Құлпынай" },
-    desc: { en: "Milkshake with fresh strawberry.", ru: "Милкшейк со свежей клубникой.", kz: "Жаңа піскен құлпынай милкшейгі." } },
-
-  // ── Smoothies ──
-  { id: "sm1", cat: "smoothies", emoji: "🍓", price: 1490, tags: [], available: true,
-    name: { en: "Berry mix smoothie", ru: "Ягодный микс", kz: "Жидек микс" },
-    desc: { en: "Mixed berry smoothie.", ru: "Смузи из ягодного микса.", kz: "Жидек қоспасынан смузи." } },
-  { id: "sm2", cat: "smoothies", emoji: "🥭", price: 1490, tags: [], available: true,
-    name: { en: "Strawberry-mango smoothie", ru: "Клубника манго", kz: "Құлпынай манго" },
-    desc: { en: "Strawberry and mango smoothie.", ru: "Смузи из клубники и манго.", kz: "Құлпынай мен манго смузиі." } },
-  { id: "sm3", cat: "smoothies", emoji: "☕", price: 1490, tags: [], available: true,
-    name: { en: "Coffee smoothie", ru: "Кофейный смузи", kz: "Кофе смузиі" },
-    desc: { en: "Cold coffee smoothie.", ru: "Холодный кофейный смузи.", kz: "Суық кофе смузиі." } },
-
-  // ── Sides ──
-  { id: "sd1", cat: "sides", emoji: "🧀", price: 900, tags: ["veg"], available: true,
-    name: { en: "Cheese sticks", ru: "Сырные палочки", kz: "Ірімшік таяқшалары" },
-    desc: { en: "Breaded, deep-fried cheese sticks.", ru: "Жареные сырные палочки в панировке.", kz: "Панировкадағы қуырылған ірімшік таяқшалары." } },
-  { id: "sd2", cat: "sides", emoji: "🍚", price: 500, tags: ["veg"], available: true,
-    name: { en: "Rice", ru: "Рис", kz: "Күріш" },
-    desc: { en: "Steamed rice side.", ru: "Отварной рис.", kz: "Пісірілген күріш." } },
-  { id: "sd3", cat: "sides", emoji: "🍗", price: 900, tags: [], available: true,
-    name: { en: "Nuggets", ru: "Нагетсы", kz: "Наггетс" },
-    desc: { en: "Crispy chicken nuggets.", ru: "Хрустящие куриные наггетсы.", kz: "Қытырлақ тауық наггетсі." } },
-  { id: "sd4", cat: "sides", emoji: "🥔", price: 700, tags: ["veg"], available: true,
-    name: { en: "Potato wedges", ru: "Картофельные дольки", kz: "Картоп бөлшектері" },
-    desc: { en: "Seasoned potato wedges.", ru: "Картофельные дольки со специями.", kz: "Дәмдеуіштермен картоп бөлшектері." } },
-  { id: "sd5", cat: "sides", emoji: "🥔", price: 600, tags: ["veg"], available: true,
-    name: { en: "Potato balls", ru: "Картофельные шарики", kz: "Картоп шарлары" },
-    desc: { en: "Crispy potato croquettes.", ru: "Хрустящие картофельные шарики.", kz: "Қытырлақ картоп шарлары." } },
-  { id: "sd6", cat: "sides", emoji: "🍟", price: 600, tags: ["veg"], available: true,
-    name: { en: "French fries", ru: "Картофель фри", kz: "Картоп фри" },
-    desc: { en: "Classic french fries.", ru: "Классический картофель фри.", kz: "Классикалық картоп фри." } },
-
-  // ── Breakfast ──
-  { id: "bf1", cat: "breakfast", emoji: "🍚", price: 990, tags: ["veg"], available: true,
-    name: { en: "Rice porridge", ru: "Рисовая каша", kz: "Күріш ботқасы" },
-    desc: { en: "Milk rice porridge.", ru: "Молочная рисовая каша.", kz: "Сүтті күріш ботқасы." } },
-  { id: "bf2", cat: "breakfast", emoji: "🥣", price: 750, tags: ["veg"], available: true,
-    name: { en: "Semolina porridge", ru: "Манная каша", kz: "Манная ботқасы" },
-    desc: { en: "Classic milk semolina porridge.", ru: "Классическая манная каша на молоке.", kz: "Сүттегі классикалық манная ботқасы." } },
-  { id: "bf3", cat: "breakfast", emoji: "🥣", price: 750, tags: ["veg"], available: true,
-    name: { en: "Oatmeal porridge", ru: "Овсяная каша", kz: "Сұлы ботқасы" },
-    desc: { en: "Classic milk oatmeal porridge.", ru: "Классическая овсяная каша на молоке.", kz: "Сүттегі классикалық сұлы ботқасы." } },
-  { id: "bf4", cat: "breakfast", emoji: "🍳", price: 1200, tags: ["veg"], available: true,
-    name: { en: "Omelet", ru: "Омлет", kz: "Омлет" },
-    desc: { en: "Fluffy egg omelet.", ru: "Пышный омлет из яиц.", kz: "Жұмыртқадан көпсіген омлет." } },
-  { id: "bf5", cat: "breakfast", emoji: "🍳", price: 1500, tags: ["hit"], available: true,
-    name: { en: "American breakfast", ru: "Американский завтрак", kz: "Америкалық таңғы ас" },
-    desc: { en: "Eggs, bacon, toast and vegetables.", ru: "Яичница, бекон, тост и овощи.", kz: "Жұмыртқа, бекон, тост және көкөніс." } },
-  { id: "bf6", cat: "breakfast", emoji: "🧇", price: 1300, tags: [], available: true,
-    name: { en: "Belgian waffles", ru: "Бельгийские вафли", kz: "Бельгия вафлилары" },
-    desc: { en: "Waffles with toppings of choice.", ru: "Вафли с топпингом на выбор.", kz: "Таңдау бойынша топпингі бар вафли." } },
-  { id: "bf7", cat: "breakfast", emoji: "🥞", price: 900, tags: ["veg"], available: true,
-    name: { en: "Pancakes", ru: "Блины", kz: "Құймақ" },
-    desc: { en: "Classic pancakes with topping.", ru: "Классические блины с добавкой.", kz: "Топпингі бар классикалық құймақ." } },
-
-  // ── Sauces ──
-  { id: "sc1", cat: "sauces", emoji: "🧄", price: 150, tags: [], available: true,
-    name: { en: "Garlic sauce", ru: "Чесночный соус", kz: "Сарымсақ соусы" },
-    desc: { en: "Creamy garlic sauce.", ru: "Сливочный соус с чесноком.", kz: "Сарымсақты кілегей соус." } },
-  { id: "sc2", cat: "sauces", emoji: "🌶️", price: 200, tags: ["spicy"], available: true,
-    name: { en: "Jalapeño sauce", ru: "Халапеньо", kz: "Халапеньо" },
-    desc: { en: "Spicy jalapeño sauce.", ru: "Острый соус халапеньо.", kz: "Ащы халапеньо соусы." } },
-  { id: "sc3", cat: "sauces", emoji: "🍅", price: 100, tags: [], available: true,
-    name: { en: "Ketchup", ru: "Кетчуп", kz: "Кетчуп" },
-    desc: { en: "Classic tomato ketchup.", ru: "Классический кетчуп.", kz: "Классикалық кетчуп." } },
-  { id: "sc4", cat: "sauces", emoji: "🧀", price: 150, tags: [], available: true,
-    name: { en: "Cheese sauce", ru: "Сырный соус", kz: "Ірімшік соусы" },
-    desc: { en: "Creamy cheese sauce.", ru: "Сливочный сырный соус.", kz: "Кілегейлі ірімшік соусы." } },
-  { id: "sc5", cat: "sauces", emoji: "🍶", price: 100, tags: [], available: true,
-    name: { en: "Soy sauce (portion)", ru: "Соевый соус (порция)", kz: "Соя соусы (порция)" },
-    desc: { en: "Single-serve soy sauce.", ru: "Соевый соус в порционной упаковке.", kz: "Порциялық соя соусы." } },
-  { id: "sc6", cat: "sauces", emoji: "🌶️", price: 200, tags: ["spicy"], available: true,
-    name: { en: "Sweet chili sauce", ru: "Свит чили", kz: "Свит чили" },
-    desc: { en: "Sweet and spicy chili sauce.", ru: "Сладко-острый соус чили.", kz: "Тәтті-ащы чили соусы." } },
-  { id: "sc7", cat: "sauces", emoji: "🌶️", price: 300, tags: ["spicy"], available: true,
-    name: { en: "Sriracha", ru: "Ширача", kz: "Ширача" },
-    desc: { en: "Spicy sriracha sauce.", ru: "Острый соус ширача.", kz: "Ащы ширача соусы." } },
-
-  // ── Lemonades ──
-  { id: "lm1", cat: "lemonades", emoji: "🥝", price: 990, tags: [], available: true,
-    sizes: [{ label: "0.5л", price: 990 }, { label: "1л", price: 1890 }],
-    name: { en: "Kiwi-lime lemonade", ru: "Лимонад Киви-лайм", kz: "Киви-лайм лимонады" },
-    desc: { en: "House lemonade, kiwi and lime.", ru: "Домашний лимонад, киви и лайм.", kz: "Үй лимонады, киви мен лайм." } },
-  { id: "lm3", cat: "lemonades", emoji: "🍊", price: 990, tags: [], available: true,
-    sizes: [{ label: "0.5л", price: 990 }, { label: "1л", price: 1890 }],
-    name: { en: "Orange lemonade", ru: "Апельсиновый лимонад", kz: "Апельсин лимонады" },
-    desc: { en: "House lemonade, orange.", ru: "Домашний лимонад с апельсином.", kz: "Апельсинмен үй лимонады." } },
-  { id: "lm5", cat: "lemonades", emoji: "🍓", price: 990, tags: [], available: true,
-    sizes: [{ label: "0.5л", price: 990 }, { label: "1л", price: 1890 }],
-    name: { en: "Strawberry lemonade", ru: "Клубничный лимонад", kz: "Құлпынай лимонады" },
-    desc: { en: "House lemonade, strawberry.", ru: "Домашний лимонад с клубникой.", kz: "Құлпынаймен үй лимонады." } },
-  { id: "lm7", cat: "lemonades", emoji: "🍓", price: 990, tags: [], available: true,
-    sizes: [{ label: "0.5л", price: 990 }, { label: "1л", price: 1890 }],
-    name: { en: "Raspberry lemonade", ru: "Малиновый лимонад", kz: "Таңқурай лимонады" },
-    desc: { en: "House lemonade, raspberry.", ru: "Домашний лимонад с малиной.", kz: "Таңқураймен үй лимонады." } },
-  { id: "lm9", cat: "lemonades", emoji: "🥭", price: 990, tags: ["new"], available: true,
-    sizes: [{ label: "0.5л", price: 990 }, { label: "1л", price: 1890 }],
-    name: { en: "Mango-passionfruit lemonade", ru: "Лимонад Манго-маракуйя", kz: "Манго-маракуйя лимонады" },
-    desc: { en: "House lemonade, mango and passionfruit.", ru: "Домашний лимонад, манго и маракуйя.", kz: "Манго мен маракуйямен үй лимонады." } },
-  { id: "lm11", cat: "lemonades", emoji: "🍹", price: 990, tags: [], available: true,
-    sizes: [{ label: "0.5л", price: 990 }, { label: "1л", price: 1890 }],
-    name: { en: "Pomegranate lemonade", ru: "Гранатовый лимонад", kz: "Анар лимонады" },
-    desc: { en: "House lemonade, pomegranate.", ru: "Домашний лимонад с гранатом.", kz: "Анармен үй лимонады." } },
-
-  // ── Seafood ──
-  { id: "sf1", cat: "seafood", emoji: "🦪", price: 1590, tags: [], available: true,
-    name: { en: "Baked mussels (3 pcs)", ru: "Запечённые мидии (3 шт)", kz: "Пісірілген мидия (3 дана)" },
-    desc: { en: "Baked mussels with cheese crust.", ru: "Запечённые мидии под сырной корочкой.", kz: "Ірімшік қыртысымен пісірілген мидия." } },
-  { id: "sf2", cat: "seafood", emoji: "🍤", price: 1790, tags: [], available: true,
-    name: { en: "Tempura shrimp (6 pcs)", ru: "Креветки темпура (6 шт)", kz: "Темпура асшаяны (6 дана)" },
-    desc: { en: "Crispy tempura-battered shrimp.", ru: "Хрустящие креветки в темпуре.", kz: "Темпурадағы қытырлақ асшаян." } },
-
-  // ── Iced coffee ──
-  { id: "ic1", cat: "coldcoffee", emoji: "🥤", price: 1190, tags: [], available: true,
-    name: { en: "Iced Americano", ru: "Айс американо", kz: "Мұзды американо" },
-    desc: { en: "Espresso over ice with cold water.", ru: "Эспрессо со льдом и холодной водой.", kz: "Мұзбен және суық сумен эспрессо." } },
-  { id: "ic2", cat: "coldcoffee", emoji: "🥤", price: 1090, tags: [], available: true,
-    name: { en: "Iced Latte", ru: "Айс латте", kz: "Мұзды латте" },
-    desc: { en: "Espresso, cold milk, ice.", ru: "Эспрессо, холодное молоко, лёд.", kz: "Эспрессо, суық сүт, мұз." } },
-  { id: "ic3", cat: "coldcoffee", emoji: "🍌", price: 1290, tags: [], available: true,
-    name: { en: "Frappuccino banana", ru: "Фраппучино банан", kz: "Фраппучино банан" },
-    desc: { en: "Blended iced coffee with banana.", ru: "Ледяной кофе с бананом.", kz: "Бананмен мұзды кофе." } },
-  { id: "ic4", cat: "coldcoffee", emoji: "🥤", price: 1290, tags: [], available: true,
-    name: { en: "Frappuccino assorted", ru: "Фраппучино ассорти", kz: "Фраппучино ассорти" },
-    desc: { en: "Blended iced coffee, house mix.", ru: "Ледяной кофе, фирменный микс.", kz: "Мұзды кофе, фирмалық қоспа." } },
-  { id: "ic5", cat: "coldcoffee", emoji: "🥤", price: 1290, tags: [], available: true,
-    name: { en: "Iced Cappuccino", ru: "Айс капучино", kz: "Мұзды капучино" },
-    desc: { en: "Espresso, cold milk foam, ice.", ru: "Эспрессо, холодная пена, лёд.", kz: "Эспрессо, суық көбік, мұз." } },
-  { id: "ic6", cat: "coldcoffee", emoji: "🍨", price: 1290, tags: [], available: true,
-    name: { en: "Glace", ru: "Гляссе", kz: "Гляссе" },
-    desc: { en: "Iced coffee with a scoop of ice cream.", ru: "Кофе со льдом и шариком мороженого.", kz: "Мұздатылған кофе, балмұздақпен." } },
-  { id: "ic7", cat: "coldcoffee", emoji: "🥂", price: 1390, tags: ["new"], available: true,
-    name: { en: "Espresso tonic", ru: "Эспрессо тоник", kz: "Эспрессо тоник" },
-    desc: { en: "Espresso over tonic water and ice.", ru: "Эспрессо на тонике со льдом.", kz: "Тоникте мұзбен эспрессо." } },
-
-  // ── Sushi bar ──
-  { id: "su1", cat: "sushi", emoji: "🍣", price: 1600, tags: [], available: true,
-    name: { en: "Maki with eel", ru: "Маки с угрем", kz: "Жыланбалықпен маки" },
-    desc: { en: "Maki roll with eel.", ru: "Маки-ролл с угрём.", kz: "Жыланбалықпен маки-ролл." } },
-  { id: "su2", cat: "sushi", emoji: "🍣", price: 1400, tags: [], available: true,
-    name: { en: "Maki with crab", ru: "Маки с крабом", kz: "Крабпен маки" },
-    desc: { en: "Maki roll with crab.", ru: "Маки-ролл с крабом.", kz: "Крабпен маки-ролл." } },
-  { id: "su3", cat: "sushi", emoji: "🍣", price: 1400, tags: [], available: true,
-    name: { en: "Maki with salmon", ru: "Маки с лососем", kz: "Лососьпен маки" },
-    desc: { en: "Maki roll with salmon.", ru: "Маки-ролл с лососем.", kz: "Лососьпен маки-ролл." } },
-  { id: "su4", cat: "sushi", emoji: "🍣", price: 900, tags: ["veg"], available: true,
-    name: { en: "Maki with cucumber", ru: "Маки с огурцом", kz: "Қиярмен маки" },
-    desc: { en: "Maki roll with cucumber.", ru: "Маки-ролл с огурцом.", kz: "Қиярмен маки-ролл." } },
-  { id: "su5", cat: "sushi", emoji: "🍣", price: 1500, tags: ["hit", "spicy"], available: true,
-    name: { en: "Spicy salmon roll", ru: "Спайси лосось", kz: "Спайси лосось" },
-    desc: { en: "Salmon roll with spicy sauce.", ru: "Ролл с лососем под острым соусом.", kz: "Ащы соуспен лосось ролл." } },
-  { id: "su6", cat: "sushi", emoji: "🍣", price: 1700, tags: [], available: true,
-    name: { en: "Chizu roll", ru: "Чизу", kz: "Чизу" },
-    desc: { en: "Roll with cream cheese.", ru: "Ролл с сырным кремом.", kz: "Ірімшік кремі бар ролл." } },
-  { id: "su7", cat: "sushi", emoji: "🍱", price: 2800, tags: ["hit"], available: true,
-    name: { en: "Philadelphia Unagi", ru: "Филадельфия Унаги", kz: "Филадельфия Унаги" },
-    desc: { en: "Uramaki with eel and cream cheese.", ru: "Урамаки с угрём и сырным кремом.", kz: "Жыланбалық пен ірімшік кремі бар урамаки." } },
-  { id: "su8", cat: "sushi", emoji: "🍱", price: 2190, tags: [], available: true,
-    name: { en: "Bonita roll", ru: "Бонита", kz: "Бонита" },
-    desc: { en: "Uramaki topped with bonito flakes.", ru: "Урамаки с хлопьями бонито.", kz: "Бонито жармасы бар урамаки." } },
-  { id: "su9", cat: "sushi", emoji: "🍱", price: 2700, tags: [], available: true,
-    name: { en: "Philadelphia roll", ru: "Филадельфия", kz: "Филадельфия" },
-    desc: { en: "Classic uramaki with salmon and cream cheese.", ru: "Классическая урамаки с лососем и сыром.", kz: "Лосось пен ірімшігі бар классикалық урамаки." } },
-  { id: "su10", cat: "sushi", emoji: "🍱", price: 2200, tags: [], available: true,
-    name: { en: "California with crab", ru: "Калифорния с крабом", kz: "Крабты Калифорния" },
-    desc: { en: "California roll with crab.", ru: "Калифорния с крабом.", kz: "Крабты Калифорния роллы." } },
-  { id: "su11", cat: "sushi", emoji: "🍱", price: 2400, tags: [], available: true,
-    name: { en: "California with shrimp", ru: "Калифорния с креветкой", kz: "Асшаянды Калифорния" },
-    desc: { en: "California roll with shrimp.", ru: "Калифорния с креветкой.", kz: "Асшаянды Калифорния роллы." } },
-  { id: "su12", cat: "sushi", emoji: "🍤", price: 2000, tags: [], available: true,
-    name: { en: "Eel tempura roll", ru: "Угорь темпура", kz: "Темпура жыланбалық" },
-    desc: { en: "Tempura roll with eel.", ru: "Темпура-ролл с угрём.", kz: "Жыланбалықты темпура-ролл." } },
-  { id: "su13", cat: "sushi", emoji: "🍣", price: 2290, tags: [], available: true,
-    name: { en: "Avatar with chicken", ru: "Аватар с курицей", kz: "Тауықты Аватар" },
-    desc: { en: "Tempura roll with chicken.", ru: "Темпура-ролл с курицей.", kz: "Тауықты темпура-ролл." } },
-  { id: "su14", cat: "sushi", emoji: "🍣", price: 2390, tags: [], available: true,
-    name: { en: "Avatar with salmon", ru: "Аватар с лососем", kz: "Лососьты Аватар" },
-    desc: { en: "Tempura roll with salmon.", ru: "Темпура-ролл с лососем.", kz: "Лососьты темпура-ролл." } },
-  { id: "su15", cat: "sushi", emoji: "🍣", price: 2490, tags: [], available: true,
-    name: { en: "Avatar with eel", ru: "Аватар с угрем", kz: "Жыланбалықты Аватар" },
-    desc: { en: "Tempura roll with eel.", ru: "Темпура-ролл с угрём.", kz: "Жыланбалықты темпура-ролл." } },
-  { id: "su16", cat: "sushi", emoji: "🍣", price: 2100, tags: [], available: true,
-    name: { en: "Salmon tempura roll", ru: "Лосось темпура", kz: "Темпура лосось" },
-    desc: { en: "Tempura roll with salmon.", ru: "Темпура-ролл с лососем.", kz: "Лососьты темпура-ролл." } },
-  { id: "su17", cat: "sushi", emoji: "🍣", price: 2000, tags: [], available: true,
-    name: { en: "Caesar tempura roll", ru: "Цезарь темпура", kz: "Темпура Цезарь" },
-    desc: { en: "Tempura roll, Caesar-style.", ru: "Темпура-ролл в стиле Цезарь.", kz: "Цезарь стиліндегі темпура-ролл." } },
-  { id: "su18", cat: "sushi", emoji: "🍙", price: 1790, tags: [], available: true,
-    name: { en: "Sushi sandwich", ru: "Суши-сэндвич", kz: "Суши-сэндвич" },
-    desc: { en: "Pressed rice sandwich with filling.", ru: "Прессованный рисовый сэндвич с начинкой.", kz: "Толтырылған қысылған күріш сэндвичі." } },
-  { id: "su19", cat: "sushi", emoji: "🍣", price: 2400, tags: [], available: true,
-    name: { en: "Baked roll with eel", ru: "Запечённый с угрем", kz: "Жыланбалықты пісірілген ролл" },
-    desc: { en: "Baked roll with eel and sauce.", ru: "Запечённый ролл с угрём и соусом.", kz: "Жыланбалық пен соусты пісірілген ролл." } },
-  { id: "su20", cat: "sushi", emoji: "🍣", price: 2400, tags: [], available: true,
-    name: { en: "Baked roll with salmon", ru: "Запечённый с лососем", kz: "Лососьты пісірілген ролл" },
-    desc: { en: "Baked roll with salmon and sauce.", ru: "Запечённый ролл с лососем и соусом.", kz: "Лосось пен соусты пісірілген ролл." } },
-  { id: "su21", cat: "sushi", emoji: "🍣", price: 2300, tags: [], available: true,
-    name: { en: "Baked roll with crab", ru: "Запечённый с крабом", kz: "Крабты пісірілген ролл" },
-    desc: { en: "Baked roll with crab and sauce.", ru: "Запечённый ролл с крабом и соусом.", kz: "Краб пен соусты пісірілген ролл." } },
-  { id: "su22", cat: "sushi", emoji: "🍣", price: 2100, tags: [], available: true,
-    name: { en: "Baked Caesar roll", ru: "Запечённый Цезарь", kz: "Пісірілген Цезарь" },
-    desc: { en: "Baked roll, Caesar-style.", ru: "Запечённый ролл в стиле Цезарь.", kz: "Цезарь стиліндегі пісірілген ролл." } },
-
-  // ── Soups ──
-  { id: "so1", cat: "soups", emoji: "🍲", price: 2200, tags: ["hit", "spicy"], available: true,
-    name: { en: "Tom Yum", ru: "Том-ям", kz: "Том-ям" },
-    desc: { en: "Spicy-sour Thai seafood soup.", ru: "Острый тайский суп с морепродуктами.", kz: "Теңіз өнімдерімен ащы-қышқыл тай сорпасы." } },
-  { id: "so2", cat: "soups", emoji: "🍜", price: 2090, tags: [], available: true,
-    name: { en: "Beef ramen", ru: "Рамен говяжий", kz: "Сиыр етті рамен" },
-    desc: { en: "Ramen noodle soup with beef.", ru: "Рамен с говядиной.", kz: "Сиыр етті рамен." } },
-  { id: "so3", cat: "soups", emoji: "🍜", price: 1990, tags: [], available: true,
-    name: { en: "Cheese ramen", ru: "Рамен сырный", kz: "Ірімшікті рамен" },
-    desc: { en: "Ramen noodle soup with cheese.", ru: "Рамен с сыром.", kz: "Ірімшікті рамен." } },
-  { id: "so4", cat: "soups", emoji: "🍜", price: 1890, tags: [], available: true,
-    name: { en: "Chicken ramen", ru: "Рамен куриный", kz: "Тауық рамен" },
-    desc: { en: "Ramen noodle soup with chicken.", ru: "Рамен с курицей.", kz: "Тауық етті рамен." } },
-
-  // ── Mains ──
-  { id: "mn1", cat: "mains", emoji: "🍜", price: 2200, tags: [], available: true,
-    name: { en: "Fried lagman", ru: "Жареный лагман", kz: "Қуырылған лагман" },
-    desc: { en: "Hand-pulled noodles fried with meat and vegetables.", ru: "Жареная лапша с мясом и овощами.", kz: "Ет пен көкөніспен қуырылған кеспе." } },
-  { id: "mn2", cat: "mains", emoji: "🍝", price: 2500, tags: ["veg"], available: true,
-    name: { en: "Pasta Alfredo", ru: "Паста Альфредо", kz: "Альфредо пастасы" },
-    desc: { en: "Creamy parmesan pasta.", ru: "Паста в сливочном соусе с пармезаном.", kz: "Пармезанмен кілегей соустағы паста." } },
-  { id: "mn3", cat: "mains", emoji: "🍲", price: 2700, tags: [], available: true,
-    name: { en: "Beef stroganoff", ru: "Бефстроганов", kz: "Бефстроганов" },
-    desc: { en: "Beef strips in creamy sauce.", ru: "Говядина в сливочном соусе.", kz: "Кілегейлі соустағы сиыр еті." } },
-  { id: "mn4", cat: "mains", emoji: "🍗", price: 1900, tags: [], available: true,
-    name: { en: "Chicken fricassee", ru: "Куриное фрикасе", kz: "Тауық фрикасесі" },
-    desc: { en: "Chicken in a light creamy sauce.", ru: "Курица в лёгком сливочном соусе.", kz: "Жеңіл кілегей соустағы тауық." } },
-  { id: "mn5", cat: "mains", emoji: "🥔", price: 2700, tags: ["veg"], available: true,
-    name: { en: "Country-style potatoes", ru: "Картошка по-деревенски", kz: "Ауылша картоп" },
-    desc: { en: "Roasted potatoes with herbs.", ru: "Жареная картошка с зеленью.", kz: "Көкөніспен қуырылған картоп." } },
-  { id: "mn6", cat: "mains", emoji: "🍲", price: 2700, tags: [], available: true,
-    name: { en: "Braised beef with vegetables", ru: "Тушёная говядина с овощами", kz: "Көкөністі қуырылған сиыр еті" },
-    desc: { en: "Slow-braised beef with vegetables.", ru: "Тушёная говядина с овощами.", kz: "Көкөністі қуырылған сиыр еті." } },
-  { id: "mn7", cat: "mains", emoji: "🍗", price: 1900, tags: [], available: true,
-    name: { en: "Chicken fillet with potatoes and mushrooms", ru: "Куриное филе с картофелем и с грибами", kz: "Картоп пен саңырауқұлақты тауық филесі" },
-    desc: { en: "Chicken fillet with potatoes and mushrooms.", ru: "Куриное филе с картофелем и грибами.", kz: "Картоп пен саңырауқұлақты тауық филесі." } },
-  { id: "mn8", cat: "mains", emoji: "🍲", price: 2800, tags: [], available: true,
-    name: { en: "Chuponcha", ru: "Чупонча", kz: "Чупонча" },
-    desc: { en: "House specialty stew.", ru: "Фирменное блюдо.", kz: "Фирмалық тағам." } },
-  { id: "mn9", cat: "mains", emoji: "🍜", price: 1600, tags: [], available: true,
-    name: { en: "Udon with chicken", ru: "Удон с курицей", kz: "Тауықты удон" },
-    desc: { en: "Udon noodles with chicken.", ru: "Удон с куриным мясом.", kz: "Тауық етті удон." } },
-
-  // ── Salads ──
-  { id: "sl1", cat: "salads", emoji: "🥗", price: 1000, tags: ["veg"], available: true,
-    name: { en: "Fresh salad", ru: "Свежий салат", kz: "Жаңа піскен салат" },
-    desc: { en: "Fresh seasonal vegetable salad.", ru: "Салат из свежих овощей.", kz: "Жаңа піскен көкөніс салаты." } },
-  { id: "sl2", cat: "salads", emoji: "🥗", price: 1700, tags: [], available: true,
-    name: { en: "Caesar salad", ru: "Цезарь", kz: "Цезарь" },
-    desc: { en: "Romaine, chicken, parmesan, dressing.", ru: "Романо, курица, пармезан, соус.", kz: "Романо, тауық, пармезан, соус." } },
-  { id: "sl3", cat: "salads", emoji: "🍆", price: 1700, tags: ["veg"], available: true,
-    name: { en: "Crispy eggplant salad", ru: "Хрустящие баклажаны", kz: "Қытырлақ баклажан" },
-    desc: { en: "Crispy fried eggplant salad.", ru: "Салат с хрустящими баклажанами.", kz: "Қытырлақ баклажанды салат." } },
-  { id: "sl4", cat: "salads", emoji: "🥗", price: 1700, tags: [], available: true,
-    name: { en: "Man's whim salad", ru: "Мужской каприз", kz: "Ерлер капризі" },
-    desc: { en: "Hearty meat and vegetable salad.", ru: "Сытный салат с мясом и овощами.", kz: "Ет пен көкөністі тойымды салат." } },
-  { id: "sl5", cat: "salads", emoji: "🥗", price: 1800, tags: ["spicy", "new"], available: true,
+  { id: "combo1", cat: "combo", emoji: "🍢", price: 14500, tags: ["hit"], available: true,
+    name: { en: "Combo 1", ru: "Комбо 1", kz: "Комбо 1" },
+    desc: { en: "5 duck, 5 chicken, 5 lamb, 10 minced · +2 sauces · 25 skewers", ru: "5 утка, 5 куриный, 5 кусковой, 10 фарш · +2 соуса · 25 палочек", kz: "5 үйрек, 5 тауық, 5 кесек ет, 10 фарш · +2 соус · 25 таяқша" } },
+  { id: "combo2", cat: "combo", emoji: "🍢", price: 14000, tags: [], available: true,
+    name: { en: "Combo 2", ru: "Комбо 2", kz: "Комбо 2" },
+    desc: { en: "5 duck, 5 chicken, 1 chicken portion, 10 minced · +2 sauces · 20 skewers", ru: "5 утка, 5 куриный, 1 порц. чикен, 10 фарш · +2 соуса · 20 палочек", kz: "5 үйрек, 5 тауық, 1 порц. чикен, 10 фарш · +2 соус · 20 таяқша" } },
+  { id: "combo3", cat: "combo", emoji: "🍢", price: 15000, tags: [], available: true,
+    name: { en: "Combo 3", ru: "Комбо 3", kz: "Комбо 3" },
+    desc: { en: "20 minced · +2 white sauces · 20 skewers", ru: "20 фарш · +2 белых соуса · 20 палочек", kz: "20 фарш · +2 ақ соус · 20 таяқша" } },
+  { id: "combo4", cat: "combo", emoji: "🍢", price: 17000, tags: [], available: true,
+    name: { en: "Combo 4", ru: "Комбо 4", kz: "Комбо 4" },
+    desc: { en: "10 duck, 10 chicken, 10 minced · +2 sauces · 30 skewers", ru: "10 утка, 10 куриный, 10 фарш · +2 соуса · 30 палочек", kz: "10 үйрек, 10 тауық, 10 фарш · +2 соус · 30 таяқша" } },
+  { id: "combomax", cat: "combo", emoji: "🔥", price: 27000, tags: ["hit"], available: true,
+    name: { en: "Combo PRO MAX", ru: "Комбо PRO MAX", kz: "Комбо PRO MAX" },
+    desc: { en: "10 duck, 10 chicken, 10 lamb, 10 minced, 1.5 chicken · +2 white +3 sauces · 40 skewers", ru: "10 утка, 10 куриный, 10 кусковой, 10 фарш, 1.5 порц. чикен · +2 бел. +3 соуса · 40 палочек", kz: "10 үйрек, 10 тауық, 10 кесек ет, 10 фарш, 1.5 чикен · +2 ақ +3 соус · 40 таяқша" } },
+  { id: "sh_utka", cat: "shashlyk", emoji: "🦆", price: 600, tags: [], available: true,
+    name: { en: "Duck skewer", ru: "Шашлык из утки", kz: "Үйрек шашлық" },
+    desc: { en: "One skewer", ru: "Одна палочка", kz: "Бір таяқша" } },
+  { id: "sh_kur", cat: "shashlyk", emoji: "🍗", price: 600, tags: [], available: true,
+    name: { en: "Chicken skewer", ru: "Куриный шашлык", kz: "Тауық шашлық" },
+    desc: { en: "One skewer", ru: "Одна палочка", kz: "Бір таяқша" } },
+  { id: "sh_kus", cat: "shashlyk", emoji: "🥩", price: 700, tags: [], available: true,
+    name: { en: "Lamb chunk skewer", ru: "Кусковой шашлык", kz: "Кесек ет шашлық" },
+    desc: { en: "One skewer", ru: "Одна палочка", kz: "Бір таяқша" } },
+  { id: "sh_farsh", cat: "shashlyk", emoji: "🍢", price: 600, tags: [], available: true,
+    name: { en: "Minced skewer (lyulya)", ru: "Шашлык из фарша (люля)", kz: "Фарш шашлық" },
+    desc: { en: "One skewer", ru: "Одна палочка", kz: "Бір таяқша" } },
+  { id: "sh_chiken", cat: "shashlyk", emoji: "🍗", price: 800, tags: [], available: true,
+    name: { en: "Chicken (chiken)", ru: "Чикен", kz: "Чикен" },
+    desc: { en: "Portion", ru: "Порция", kz: "Порция" } },
+  { id: "fc_sorpa", cat: "soups", emoji: "🍲", price: 1000, priceMax: 1200, tags: [], available: true,
+    name: { en: "Sorpa (broth)", ru: "Сорпа", kz: "Сорпа" },
+    desc: { en: "Rich meat broth", ru: "Наваристый мясной бульон", kz: "Қою ет сорпасы" } },
+  { id: "fc_pelmeni", cat: "soups", emoji: "🥟", price: 1200, priceMax: 1400, tags: [], available: true,
+    name: { en: "Pelmeni", ru: "Пельмени", kz: "Пельмень" },
+    desc: { en: "Meat dumplings in broth", ru: "Мясные пельмени в бульоне", kz: "Сорпадағы ет пельмень" } },
+  { id: "fc_suyru", cat: "soups", emoji: "🍜", price: 1200, priceMax: 1400, tags: [], available: true,
+    name: { en: "Suyru lagman (soup)", ru: "Сүйру лагман", kz: "Сүйру лағман" },
+    desc: { en: "Hand-pulled noodle soup", ru: "Суп с домашней лапшой", kz: "Үй кеспесі бар сорпа" } },
+  { id: "fc_kuksu", cat: "soups", emoji: "🍜", price: 1200, priceMax: 1400, tags: [], available: true,
+    name: { en: "Kuksu", ru: "Куксу", kz: "Куксу" },
+    desc: { en: "Cold noodle soup", ru: "Холодный суп с лапшой", kz: "Салқын кеспе сорпасы" } },
+  { id: "fc_naryn", cat: "soups", emoji: "🍜", price: 1300, priceMax: 1500, tags: [], available: true,
+    name: { en: "Naryn", ru: "Нарын", kz: "Нарын" },
+    desc: { en: "Noodles with horse meat", ru: "Лапша с кониной", kz: "Жылқы етімен кеспе" } },
+  { id: "mc_manty", cat: "mains", emoji: "🥟", price: 1400, tags: [], available: true,
+    name: { en: "Manty", ru: "Манты", kz: "Манты" },
+    desc: { en: "Steamed meat dumplings", ru: "Паровые манты с мясом", kz: "Буға пісірілген манты" } },
+  { id: "mc_tefteli", cat: "mains", emoji: "🍖", price: 1800, tags: [], available: true,
+    name: { en: "Meatballs", ru: "Тефтели", kz: "Тефтели" },
+    desc: { en: "Meatballs in sauce", ru: "Тефтели в соусе", kz: "Соустағы тефтели" } },
+  { id: "mc_brizol", cat: "mains", emoji: "🍳", price: 1600, tags: [], available: true,
+    name: { en: "Brizol", ru: "Бризоль", kz: "Бризоль" },
+    desc: { en: "Meat in an omelette wrap", ru: "Мясо в яичном блинчике", kz: "Жұмыртқа қабығындағы ет" } },
+  { id: "mc_guyru", cat: "mains", emoji: "🍜", price: 1600, tags: [], available: true,
+    name: { en: "Fried lagman", ru: "Гуйру лагман", kz: "Гуйру лағман" },
+    desc: { en: "Stir-fried noodles with meat", ru: "Жареная лапша с мясом", kz: "Етпен қуырылған кеспе" } },
+  { id: "mc_comyan", cat: "mains", emoji: "🍜", price: 1600, tags: [], available: true,
+    name: { en: "Tsomyan (fried noodles)", ru: "Цомян", kz: "Цомян" },
+    desc: { en: "Uyghur-style fried noodles", ru: "Жареная лапша по-уйгурски", kz: "Ұйғырша қуырылған кеспе" } },
+  { id: "mc_bifshteks", cat: "mains", emoji: "🥩", price: 1600, tags: [], available: true,
+    name: { en: "Beefsteak", ru: "Бифштекс", kz: "Бифштекс" },
+    desc: { en: "Pan-fried beef patty", ru: "Жареный говяжий бифштекс", kz: "Қуырылған сиыр бифштексі" } },
+  { id: "mc_gulyash", cat: "mains", emoji: "🍲", price: 1600, tags: [], available: true,
+    name: { en: "Goulash", ru: "Гуляш", kz: "Гуляш" },
+    desc: { en: "Beef stew with gravy", ru: "Гуляш из говядины с подливой", kz: "Тұздықпен сиыр гуляшы" } },
+  { id: "mc_plov", cat: "mains", emoji: "🍛", price: 1600, tags: ["hit"], available: true,
+    name: { en: "Plov", ru: "Плов", kz: "Палау" },
+    desc: { en: "Rice with meat and carrots", ru: "Рис с мясом и морковью", kz: "Ет пен сәбізі бар күріш" } },
+  { id: "mc_tabaka", cat: "mains", emoji: "🍗", price: 1700, tags: [], available: true,
+    name: { en: "Chicken tabaka", ru: "Табака цыплята", kz: "Тапақа балапан" },
+    desc: { en: "Flattened fried chicken", ru: "Цыпленок табака", kz: "Жалпақталған қуырылған балапан" } },
+  { id: "mc_kazan", cat: "mains", emoji: "🍖", price: 2300, tags: ["hit"], available: true,
+    name: { en: "Kazan kebab", ru: "Казан кебаб", kz: "Қазан кебаб" },
+    desc: { en: "Meat and potatoes from the cauldron", ru: "Мясо с картофелем из казана", kz: "Қазандағы ет пен картоп" } },
+  { id: "mc_beshbarmak", cat: "mains", emoji: "🍲", price: 2300, tags: ["hit"], available: true,
+    name: { en: "Beshbarmak", ru: "Бешбармак", kz: "Бешбармақ" },
+    desc: { en: "Boiled meat with flat noodles", ru: "Отварное мясо с домашней лапшой", kz: "Қайнатылған ет пен қамыр" } },
+  { id: "sl_achuchuk", cat: "salads", emoji: "🥗", price: 850, tags: [], available: true,
+    name: { en: "Achuchuk", ru: "Ачучук", kz: "Ашшық-чучук" },
+    desc: { en: "Tomato and onion salad", ru: "Салат из томатов и лука", kz: "Қызанақ пен пияз салаты" } },
+  { id: "sl_svezhiy", cat: "salads", emoji: "🥗", price: 850, tags: [], available: true,
+    name: { en: "Fresh salad", ru: "Свежий", kz: "Балғын салат" },
+    desc: { en: "Fresh vegetables", ru: "Салат из свежих овощей", kz: "Балғын көкөніс салаты" } },
+  { id: "sl_thai", cat: "salads", emoji: "🥗", price: 1350, tags: [], available: true,
     name: { en: "Thai salad", ru: "Тайский", kz: "Тай салаты" },
-    desc: { en: "Spicy Thai-style salad.", ru: "Острый салат в тайском стиле.", kz: "Тай стиліндегі ащы салат." } },
-
-  // ── Pizza ──
-  { id: "s2", cat: "pizza", emoji: "🍕", price: 2300, tags: ["hit"], available: true,
-    name: { en: "Adjarian khachapuri", ru: "Хачапури по-аджарски", kz: "Аджар хачапурисы" },
-    desc: { en: "Boat-shaped bread with cheese and egg.", ru: "Лодочка с сыром и яйцом.", kz: "Ірімшік пен жұмыртқасы бар қайық тәрізді нан." } },
-  { id: "pz2", cat: "pizza", emoji: "🍕", price: 2200, tags: ["veg"], available: true,
-    name: { en: "Cheese pizza", ru: "Сырная", kz: "Ірімшікті пицца" },
-    desc: { en: "Four cheeses pizza.", ru: "Пицца с четырьмя видами сыра.", kz: "Төрт түрлі ірімшігі бар пицца." } },
-  { id: "pz3", cat: "pizza", emoji: "🍕", price: 2500, tags: [], available: true,
-    name: { en: "Hunter's pizza", ru: "Охотничья", kz: "Аңшы пиццасы" },
-    desc: { en: "Pizza with assorted meats.", ru: "Пицца с разными видами мяса.", kz: "Әр түрлі етпен пицца." } },
-  { id: "pz4", cat: "pizza", emoji: "🍕", price: 2500, tags: [], available: true,
-    name: { en: "Chicken & mushroom pizza", ru: "Курица с грибами", kz: "Саңырауқұлақты тауық пиццасы" },
-    desc: { en: "Pizza with chicken and mushrooms.", ru: "Пицца с курицей и грибами.", kz: "Тауық пен саңырауқұлақты пицца." } },
-  { id: "pz5", cat: "pizza", emoji: "🍕", price: 2300, tags: [], available: true,
-    name: { en: "Chicken pizza", ru: "Куриная", kz: "Тауықты пицца" },
-    desc: { en: "Pizza with chicken.", ru: "Пицца с курицей.", kz: "Тауықты пицца." } },
-  { id: "pz6", cat: "pizza", emoji: "🍕", price: 2400, tags: ["hit"], available: true,
-    name: { en: "Pepperoni pizza", ru: "Пепперони", kz: "Пепперони" },
-    desc: { en: "Classic pepperoni pizza.", ru: "Классическая пицца пепперони.", kz: "Классикалық пепперони пиццасы." } },
-  { id: "pz7", cat: "pizza", emoji: "🍕", price: 2600, tags: [], available: true,
-    name: { en: "Kazakhstan pizza", ru: "Казахстан", kz: "Қазақстан" },
-    desc: { en: "House-style pizza with local flavors.", ru: "Фирменная пицца с местными вкусами.", kz: "Жергілікті дәмдері бар фирмалық пицца." } },
-  { id: "pz8", cat: "pizza", emoji: "🍕", price: 2600, tags: [], available: true,
-    name: { en: "Four seasons pizza", ru: "4 сезона", kz: "4 маусым" },
-    desc: { en: "Pizza divided into four toppings.", ru: "Пицца из четырёх начинок.", kz: "Төрт толтырғышты пицца." } },
-  { id: "pz9", cat: "pizza", emoji: "🍕", price: 2400, tags: ["spicy"], available: true,
-    name: { en: "Diablo pizza", ru: "Диабло", kz: "Дьябло" },
-    desc: { en: "Spicy pizza with jalapeños.", ru: "Острая пицца с халапеньо.", kz: "Халапеньосы бар ащы пицца." } },
-  { id: "pz10", cat: "pizza", emoji: "🍕", price: 2500, tags: [], available: true,
-    name: { en: "BBQ pizza", ru: "Барбекю", kz: "Барбекю" },
-    desc: { en: "Pizza with BBQ chicken.", ru: "Пицца с курицей барбекю.", kz: "Барбекю тауығы бар пицца." } },
-  { id: "pz11", cat: "pizza", emoji: "🍕", price: 2000, tags: ["veg"], available: true,
-    name: { en: "Margherita pizza", ru: "Маргарита", kz: "Маргарита" },
-    desc: { en: "Tomato, mozzarella and basil.", ru: "Томаты, моцарелла и базилик.", kz: "Томат, моцарелла және райхан." } },
-
-  // ── Fast food ──
-  { id: "ff1", cat: "fastfood", emoji: "🍔", price: 1590, tags: ["hit"], available: true,
-    name: { en: "Cheeseburger", ru: "Чизбургер", kz: "Чизбургер" },
-    desc: { en: "Beef patty with cheese.", ru: "Котлета из говядины с сыром.", kz: "Ірімшігі бар сиыр етінен котлет." } },
-  { id: "ff2", cat: "fastfood", emoji: "🍔", price: 1890, tags: [], available: true,
-    name: { en: "Double burger", ru: "Двойной бургер", kz: "Қос бургер" },
-    desc: { en: "Two beef patties, double cheese.", ru: "Две котлеты, двойной сыр.", kz: "Екі котлет, қос ірімшік." } },
-  { id: "ff3", cat: "fastfood", emoji: "🍔", price: 1490, tags: [], available: true,
-    name: { en: "Burger", ru: "Бургер", kz: "Бургер" },
-    desc: { en: "Classic beef burger.", ru: "Классический бургер с говядиной.", kz: "Сиыр етінен классикалық бургер." } },
-  { id: "ff4", cat: "fastfood", emoji: "🍔", price: 1390, tags: [], available: true,
-    name: { en: "Chicken burger", ru: "Чикен бургер", kz: "Тауықты бургер" },
-    desc: { en: "Crispy chicken burger.", ru: "Бургер с хрустящей курицей.", kz: "Қытырлақ тауықты бургер." } },
-  { id: "ff5", cat: "fastfood", emoji: "🌯", price: 1200, tags: [], available: true,
-    name: { en: "Twister", ru: "Твистер", kz: "Твистер" },
-    desc: { en: "Wrap with crispy chicken.", ru: "Ролл с хрустящей курицей.", kz: "Қытырлақ тауықты ролл." } },
-  { id: "ff6", cat: "fastfood", emoji: "🍗", price: 3500, tags: [], available: true,
-    name: { en: "Boneless chicken", ru: "Чикен без костей", kz: "Сүйексіз тауық" },
-    desc: { en: "Boneless fried chicken pieces.", ru: "Куриные кусочки без костей.", kz: "Сүйексіз тауық бөліктері." } },
-  { id: "ff7", cat: "fastfood", emoji: "🍗", price: 2190, tags: [], available: true,
-    name: { en: "Yangnyeom chicken", ru: "Яннем чикен", kz: "Яннем чикен" },
-    desc: { en: "Korean-style sweet and spicy chicken.", ru: "Корейская курица в сладко-остром соусе.", kz: "Тәтті-ащы соустағы корей тауығы." } },
-  { id: "ff8", cat: "fastfood", emoji: "🍗", price: 1990, tags: [], available: true,
-    name: { en: "Chicken strips", ru: "Стрипсы", kz: "Стрипс" },
-    desc: { en: "Crispy chicken strips.", ru: "Хрустящие куриные стрипсы.", kz: "Қытырлақ тауық стрипсі." } },
-  { id: "ff9", cat: "fastfood", emoji: "🧀", price: 790, tags: [], available: true,
-    name: { en: "Extra cheese topping", ru: "Сырная подача", kz: "Ірімшік қоспасы" },
-    desc: { en: "Melted cheese add-on.", ru: "Дополнительный расплавленный сыр.", kz: "Қосымша еріген ірімшік." } },
-  { id: "ff10", cat: "fastfood", emoji: "🌯", price: 1290, tags: [], available: true,
-    name: { en: "Tandyr lavash", ru: "Тандыр лаваш", kz: "Тандыр лаваш" },
-    desc: { en: "Lavash wrap baked in a tandoor.", ru: "Лаваш, запечённый в тандыре.", kz: "Тандырда пісірілген лаваш." } },
+    desc: { en: "Thai-style salad", ru: "Салат по-тайски", kz: "Тайша салат" } },
+  { id: "sl_kapriz", cat: "salads", emoji: "🥗", price: 1350, tags: [], available: true,
+    name: { en: "Men's caprice", ru: "Мужской каприз", kz: "Ер каприз" },
+    desc: { en: "Meat salad with vegetables", ru: "Мясной салат с овощами", kz: "Көкөніспен ет салаты" } },
+  { id: "sl_cezar", cat: "salads", emoji: "🥗", price: 1350, tags: [], available: true,
+    name: { en: "Caesar", ru: "Цезарь", kz: "Цезарь" },
+    desc: { en: "Caesar with chicken", ru: "Цезарь с курицей", kz: "Тауықпен цезарь" } },
+  { id: "sl_yusup", cat: "salads", emoji: "🥗", price: 1500, tags: ["hit"], available: true,
+    name: { en: "Yusup salad", ru: "Юсуп салат", kz: "Юсуп салаты" },
+    desc: { en: "House special salad", ru: "Фирменный салат заведения", kz: "Мекеменің фирмалық салаты" } },
+  { id: "cd_cola", cat: "cold", emoji: "🥤", price: 300, tags: [], available: true,
+    name: { en: "Coca-Cola", ru: "Кока-Кола", kz: "Кока-Кола" },
+    desc: { en: "Chilled", ru: "Охлажденная", kz: "Салқындатылған" } },
+  { id: "cd_maxi", cat: "cold", emoji: "🥤", price: 400, tags: [], available: true,
+    name: { en: "Maxi cola", ru: "Макси кола", kz: "Макси кола" },
+    desc: { en: "Large serving", ru: "Большая порция", kz: "Үлкен порция" } },
+  { id: "cd_fanta", cat: "cold", emoji: "🥤", price: 250, tags: [], available: true,
+    name: { en: "Fanta", ru: "Фанта", kz: "Фанта" },
+    desc: { en: "Chilled", ru: "Охлажденная", kz: "Салқындатылған" } },
+  { id: "cd_fuse", cat: "cold", emoji: "🧃", price: 250, tags: [], available: true,
+    name: { en: "Fuse Tea", ru: "Фьюс чай", kz: "Фьюс шай" },
+    desc: { en: "Iced tea", ru: "Холодный чай", kz: "Салқын шай" } },
+  { id: "hd_black", cat: "hot", emoji: "🍵", price: 300, tags: [], available: true,
+    name: { en: "Black tea", ru: "Чёрный чай", kz: "Қара шай" },
+    desc: { en: "Pot of black tea", ru: "Чайник черного чая", kz: "Бір шәйнек қара шай" } },
+  { id: "hd_green", cat: "hot", emoji: "🍵", price: 300, tags: [], available: true,
+    name: { en: "Green tea", ru: "Зелёный чай", kz: "Жасыл шай" },
+    desc: { en: "Pot of green tea", ru: "Чайник зеленого чая", kz: "Бір шәйнек жасыл шай" } },
+  { id: "hd_tashkent", cat: "hot", emoji: "🍵", price: 400, tags: [], available: true,
+    name: { en: "Tashkent tea", ru: "Ташкентский чай", kz: "Ташкент шайы" },
+    desc: { en: "Tashkent-style tea", ru: "Чай по-ташкентски", kz: "Ташкентше шай" } },
+  { id: "hd_coffee", cat: "hot", emoji: "☕", price: 250, tags: [], available: true,
+    name: { en: "Coffee", ru: "Кофе", kz: "Кофе" },
+    desc: { en: "Freshly brewed", ru: "Свежесваренный", kz: "Жаңа қайнатылған" } },
 ];
 
 // Table reservations by capacity. Field keys (id/name/capacity) are kept the
@@ -597,7 +254,7 @@ function isFutureScheduled(o, now = Date.now()) {
 const T = {
   en: {
     menu: "Menu", about: "About", contacts: "Contacts", cart: "Cart",
-    tagline: "Always fresh. Always like home.",
+    tagline: "Where grill smoke and the aroma of chicken drift, the most genuine people always gather.",
     heroText: "Pizza, sushi, burgers, coffee and more — a wide menu, always fresh and homely. Sairam, Shymkent.",
     seeMenu: "Open the menu", today: "Open today", until: "until",
     search: "Search the menu…", all: "All", soldOut: "Sold out", add: "Add",
@@ -637,7 +294,7 @@ const T = {
     address: "Yusuf Saremi St. 964, Vahab Ata Mall, Sairam, Shymkent", hours: "Daily · 08:00–01:00",
     staff: "Staff portal",
     activeOrder: "Your order", items: "items",
-    footAbout: "Pizza, sushi, burgers and coffee in Sairam, Shymkent. Fast, fresh, and homely.",
+    footAbout: "Where grill smoke and the aroma of chicken drift, the most genuine people always gather.",
     payBtn: "Pay", payTitle: "Payment via Kaspi", payAmount: "Order total",
     kaspiScan: "Scan this QR in the Kaspi app", kaspiNoQr: "The cafe's Kaspi QR will appear here",
     kaspiStep1: "Open Kaspi → Payments → Scan QR", kaspiStep2: "Transfer the exact order total",
@@ -692,7 +349,7 @@ const T = {
   },
   ru: {
     menu: "Меню", about: "О нас", contacts: "Контакты", cart: "Корзина",
-    tagline: "Всегда свежо. Всегда по-домашнему.",
+    tagline: "Там, где дым от шашлыка и аромат чикена, всегда собираются самые искренние люди.",
     heroText: "Пицца, суши, бургеры, кофе и не только — большое меню, всегда свежее и уютное. Сайрам, Шымкент.",
     seeMenu: "Открыть меню", today: "Сегодня открыто", until: "до",
     search: "Поиск по меню…", all: "Все", soldOut: "Стоп-лист", add: "Добавить",
@@ -732,7 +389,7 @@ const T = {
     address: "ул. Юсуфа Сареми 964, ТЦ «Вахаб ата», Сайрам, Шымкент", hours: "Ежедневно · 08:00–01:00",
     staff: "Для персонала",
     activeOrder: "Ваш заказ", items: "поз.",
-    footAbout: "Пицца, суши, бургеры и кофе в Сайраме, Шымкент. Быстро, свежо и по-домашнему уютно.",
+    footAbout: "Там, где дым от шашлыка и аромат чикена, всегда собираются самые искренние люди.",
     payBtn: "Оплатить", payTitle: "Оплата через Kaspi", payAmount: "Сумма заказа",
     kaspiScan: "Отсканируйте QR в приложении Kaspi", kaspiNoQr: "Здесь появится Kaspi QR кафе",
     kaspiStep1: "Откройте Kaspi → Платежи → Сканировать QR", kaspiStep2: "Переведите точную сумму заказа",
@@ -787,7 +444,7 @@ const T = {
   },
   kz: {
     menu: "Мәзір", about: "Біз туралы", contacts: "Байланыс", cart: "Себет",
-    tagline: "Әрқашан жаңа. Әрқашан үйдегідей.",
+    tagline: "Шашлықтың түтіні мен чикеннің хош иісі бар жерде әрқашан ең шынайы адамдар жиналады.",
     heroText: "Пицца, суши, бургер, кофе және т.б. — үлкен мәзір, әрқашан жаңа әрі жайлы. Сайрам, Шымкент.",
     seeMenu: "Мәзірді ашу", today: "Бүгін ашық", until: "дейін",
     search: "Мәзірден іздеу…", all: "Барлығы", soldOut: "Аяқталды", add: "Қосу",
@@ -827,7 +484,7 @@ const T = {
     address: "Юсуф Сареми к-сі 964, «Вахаб ата» СТ, Сайрам, Шымкент", hours: "Күн сайын · 08:00–01:00",
     staff: "Қызметкерлерге",
     activeOrder: "Сіздің тапсырысыңыз", items: "поз.",
-    footAbout: "Сайрамдағы (Шымкент) пицца, суши, бургер және кофе. Жылдам, жаңа әрі үйдегідей жайлы.",
+    footAbout: "Шашлықтың түтіні мен чикеннің хош иісі бар жерде әрқашан ең шынайы адамдар жиналады.",
     payBtn: "Төлеу", payTitle: "Kaspi арқылы төлем", payAmount: "Тапсырыс сомасы",
     kaspiScan: "Kaspi қолданбасында осы QR-ды сканерлеңіз", kaspiNoQr: "Мұнда кафенің Kaspi QR-ы шығады",
     kaspiStep1: "Kaspi → Төлемдер → QR сканерлеу", kaspiStep2: "Тапсырыстың нақты сомасын аударыңыз",
@@ -891,7 +548,7 @@ const API = import.meta.env.VITE_API_URL || "https://aspan-cafe-backend.onrender
 const fmt = (n) => n.toLocaleString("ru-RU") + " ₸";
 // Mandatory 10% service charge. The backend re-computes and enforces this on
 // every order (place + edit); the frontend mirrors it only for live display.
-const SERVICE_FEE_RATE = 0.10;
+const SERVICE_FEE_RATE = 0; // "Обслуживание 0%" per the Yusup Cafe menu board
 const serviceFeeOf = (subtotal) => Math.round(subtotal * SERVICE_FEE_RATE);
 
 // Delivery pricing: three concentric zones around the restaurant; the fee is
@@ -900,10 +557,11 @@ const serviceFeeOf = (subtotal) => Math.round(subtotal * SERVICE_FEE_RATE);
 // live in cafe settings; these defaults apply until first saved. The backend
 // re-computes the fee on every order, so this mirror is display-only.
 const DELIVERY_DEFAULTS = {
-  // Yusup Cafe — Юсуф Сареми 5/17, Сайрам (the physical restaurant). The
-  // ring centre is code-controlled only (no admin UI sets it), so it always
-  // comes from here and can never drift from a stale stored value.
-  lat: 42.2976, lng: 69.7592,
+  // Yusup Cafe — Сайрам (the physical restaurant), from the owner's 2GIS pin
+  // https://2gis.ru/geo/69.825314,42.434279 (2GIS gives lng,lat). The ring
+  // centre is code-controlled only (no admin UI sets it), so it always comes
+  // from here and can never drift from a stale stored value.
+  lat: 42.434279, lng: 69.825314,
   zones: [{ km: 2, fee: 0 }, { km: 4, fee: 300 }, { km: 6, fee: 500 }],
 };
 const deliveryCfgOf = (cafeInfo) => {
@@ -962,7 +620,7 @@ function resolveCartLine(menu, cartId) {
   return { item, price: item.price, sizeLabel: null, iikoId: item.id };
 }
 
-const SIZE_FRIENDLY_CATS = new Set(["coffee", "tea", "drinks", "milkshakes", "smoothies", "lemonades", "coldcoffee"]);
+const SIZE_FRIENDLY_CATS = new Set(["cold", "hot"]);
 
 function orderedCats(menu) {
   const seen = new Set();
@@ -1418,7 +1076,7 @@ function DishCard({ item, lang, t, image, cart, setQty, isClosed }) {
           </div>
         )}
         <div className="flex items-center justify-between mt-3">
-          <div className="font-extrabold" style={{ color: P.txt }}>{fmt(activePrice)}</div>
+          <div className="font-extrabold" style={{ color: P.txt }}>{item.priceMax ? `${activePrice.toLocaleString("ru-RU")} – ${fmt(item.priceMax)}` : fmt(activePrice)}</div>
           {off ? (
             <span className="text-xs font-bold" style={{ color: P.sub }}>—</span>
           ) : qty > 0 ? (
@@ -1688,7 +1346,7 @@ const PRIVACY_POLICY = {
     ]},
     { title: "10. Контактная информация", body: [
       { p: "Название ресторана: Yusup Cafe" },
-      { p: "Телефон: +7 778 564 77 77" },
+      { p: "Телефон: +7 775 379 82 43" },
       { p: "Адрес: Сайрам, улица Юсуфа Сареми 964. ТЦ Вахаб ата" },
     ]},
     { title: "11. Изменения политики", body: [
@@ -1725,7 +1383,7 @@ function PrivacyPolicy({ open, onClose }) {
             </div>
           ))}
           <div className="mt-6 mb-2 rounded-xl px-4 py-3 text-xs" style={{ background: P.card, border: `1px solid ${P.line}`, color: P.sub }}>
-            Yusup Cafe · +7 778 564 77 77 · Сайрам, ул. Юсуфа Сареми 964, ТЦ «Вахаб ата»
+            Yusup Cafe · +7 775 379 82 43 · Сайрам, ул. Юсуфа Сареми 964, ТЦ «Вахаб ата»
           </div>
         </div>
         <div className="px-5 py-4" style={{ borderTop: `1px solid ${P.line}`, background: P.card }}>
@@ -2786,7 +2444,6 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
           </a>
           <nav className="hidden md:flex items-center gap-4 ml-4 text-sm font-bold">
             <a href="#menu" style={{ color: P.sub }} className="no-underline hover:opacity-70">{t("menu")}</a>
-            <a href="#about" style={{ color: P.sub }} className="no-underline hover:opacity-70">{t("about")}</a>
             <a href="#contacts" style={{ color: P.sub }} className="no-underline hover:opacity-70">{t("contacts")}</a>
           </nav>
           <div className="ml-auto flex items-center gap-2">
@@ -2837,12 +2494,11 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
           <div className="max-w-2xl sm:max-w-[56%]">
             <div className="flex items-center gap-3 mb-4">
               <Logo h={34} tone="light" wordmark={false} />
-              <span className="text-xs font-extrabold tracking-widest uppercase" style={{ color: P.saff }}>{L3(lang, "Sairam · Halal kitchen", "Сайрам · Халяльная кухня", "Сайрам · Халал ас")}</span>
+              <span className="text-xs font-extrabold tracking-widest uppercase" style={{ color: P.saff }}>{L3(lang, "Halal kitchen", "Халяльная кухня", "Халал ас")}</span>
             </div>
-            <h1 className="leading-tight" style={{ fontFamily: FONT_DISPLAY, color: "#fff", fontSize: "clamp(34px,5.6vw,58px)", fontWeight: 700, letterSpacing: "-.01em" }}>
+            <h1 className="leading-snug max-w-xl" style={{ fontFamily: FONT_DISPLAY, color: "#fff", fontSize: "clamp(23px,3.4vw,38px)", fontWeight: 700, letterSpacing: "-.01em" }}>
               {t("tagline")}
             </h1>
-            <p className="mt-4 max-w-md" style={{ color: "rgba(250,245,236,.82)", fontSize: 15, lineHeight: 1.7 }}>{t("heroText")}</p>
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <a href="#menu" className="no-underline font-extrabold text-sm px-5 py-3 rounded-full" style={{ background: P.saff, color: P.txt, boxShadow: "0 12px 28px rgba(0,0,0,.32)" }}>
                 {t("seeMenu")} ↓
@@ -2893,27 +2549,6 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
         </div>
       </section>
 
-      {/* about */}
-      <section id="about" style={{ background: P.card, borderTop: `1px solid ${P.line}`, borderBottom: `1px solid ${P.line}` }}>
-        <div className="max-w-5xl mx-auto px-4 py-12 grid sm:grid-cols-2 gap-8 items-center">
-          <div>
-            <Logo h={46} />
-            <h2 className="mt-3" style={{ fontFamily: FONT_DISPLAY, fontSize: 22, fontWeight: 700 }}>{t("aboutTitle")}</h2>
-            <p className="mt-3 text-sm leading-relaxed" style={{ color: P.sub }}>{t("aboutText")}</p>
-          </div>
-          <div className="grid grid-cols-3 gap-3 text-center">
-            {[["130+", L3(lang, "dishes on the menu", "блюд в меню", "мәзірдегі тағамдар")],
-              ["08:00–01:00", L3(lang, "open daily", "ежедневно", "күн сайын ашық")],
-              ["4.2", L3(lang, "2GIS rating", "рейтинг в 2ГИС", "2ГИС рейтингі")]].map(([n, l]) => (
-              <div key={l} className="rounded-2xl p-5" style={{ background: P.bone, border: `1px solid ${P.line}` }}>
-                <div className="font-extrabold" style={{ fontFamily: FONT_DISPLAY, fontSize: 24 }}>{n}</div>
-                <div className="text-xs mt-1" style={{ color: P.sub }}>{l}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* contacts / footer */}
       <footer id="contacts" style={{ background: P.ink }}>
         <div className="max-w-5xl mx-auto px-4 py-10 grid sm:grid-cols-3 gap-8">
@@ -2923,9 +2558,9 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
           </div>
           <div className="text-sm" style={{ color: "rgba(255,255,255,.8)" }}>
             <div className="font-extrabold mb-2" style={{ color: "#fff" }}>{t("contacts")}</div>
-            <div className="mb-1">{t("address")}</div>
+            <div className="mb-1">{L3(lang, "Our location", "Наше местоположение", "Біздің орналасқан жеріміз")}: <a href="https://2gis.ru/geo/69.825314,42.434279" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>2GIS</a></div>
             <div className="mb-1">{t("hours")}</div>
-            <div><a href="tel:+77785647777" style={{ color: "inherit" }}>+7 778 564 77 77</a></div>
+            <div><a href="tel:+77753798243" style={{ color: "inherit" }}>+7 775 379 82 43</a></div>
             <button onClick={openPrivacy} className="mt-3 text-xs font-bold underline p-0" style={{ background: "none", color: "rgba(255,255,255,.65)" }}>
               Политика конфиденциальности
             </button>
@@ -3283,10 +2918,10 @@ function OrderCard({ o, lang, onStatus, onEditItems, onAckCall, onBookingEnd }) 
 
 function ItemForm({ initial, onSave, onClose, lang }) {
   const [f, setF] = useState(initial || {
-    id: "i" + Date.now(), cat: "coffee", emoji: "☕", price: 1000, tags: [], available: true, deliveryAvailable: true,
+    id: "i" + Date.now(), cat: "mains", emoji: "🍛", price: 1000, tags: [], available: true, deliveryAvailable: true,
     name: { en: "", ru: "", kz: "" }, desc: { en: "", ru: "", kz: "" },
   });
-  const [sizeEditorOpen, setSizeEditorOpen] = useState(() => !!(initial && initial.sizes && initial.sizes.length) || SIZE_FRIENDLY_CATS.has((initial && initial.cat) || "coffee"));
+  const [sizeEditorOpen, setSizeEditorOpen] = useState(() => !!(initial && initial.sizes && initial.sizes.length) || SIZE_FRIENDLY_CATS.has((initial && initial.cat) || "mains"));
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setName = (l, v) => setF((p) => ({ ...p, name: { ...p.name, [l]: v } }));
   const setDesc = (l, v) => setF((p) => ({ ...p, desc: { ...p.desc, [l]: v } }));
