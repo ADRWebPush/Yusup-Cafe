@@ -5,12 +5,14 @@ import sqlite3
 import json
 import os
 import time
-import threading
 import datetime as dt
 import re
 from zoneinfo import ZoneInfo
 
 app = Flask(__name__)
+# Menu photos are embedded as compressed data URLs. Cap the complete request
+# so malformed or hostile JSON cannot consume unbounded worker memory.
+app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -54,14 +56,27 @@ def init_db():
             data JSONB NOT NULL
         )
     """)
-    # Staff edits (photo / kz+en names / hide) attached to iiko items by their
-    # itemId, layered on top of the auto-generated overlay at display time.
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS iiko_overlay (
-            item_id TEXT PRIMARY KEY,
-            data JSONB NOT NULL
+    menu_marker = conn.execute(
+        "SELECT 1 FROM settings WHERE key = 'menu_initialized'"
+    ).fetchone()
+    if not menu_marker:
+        has_menu = conn.execute("SELECT 1 FROM menu LIMIT 1").fetchone()
+        if not has_menu:
+            seed_path = os.path.join(os.path.dirname(__file__), "menu_seed.json")
+            with open(seed_path, encoding="utf-8") as seed_file:
+                seed_items = validate_menu_payload(json.load(seed_file))
+            for idx, item in enumerate(seed_items):
+                item["sortOrder"] = idx
+                conn.execute(
+                    "INSERT INTO menu (id, data) VALUES (%s, %s) "
+                    "ON CONFLICT (id) DO NOTHING",
+                    (item["id"], json.dumps(item)),
+                )
+        conn.execute(
+            "INSERT INTO settings (key, data) VALUES ('menu_initialized', %s) "
+            "ON CONFLICT (key) DO NOTHING",
+            (json.dumps({"version": 1}),),
         )
-    """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS notifications (
             id SERIAL PRIMARY KEY,
@@ -92,10 +107,18 @@ def init_db():
 # ── MENU ──────────────────────────────────────────
 from auth import check_login, require_owner, is_owner_request
 
+
+@app.route("/api/health", methods=["GET"])
+def health():
+    return jsonify({"ok": True})
+
+
 @app.route("/api/login", methods=["POST"])
 @limiter.limit("5 per minute; 30 per hour")  # slow brute-force attempts to a crawl
 def login():
-    body = request.get_json()
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify(error="invalid request"), 400
     token = check_login(body.get("username"), body.get("password"))
     if not token:
         return jsonify(error="wrong username or password"), 401
@@ -121,131 +144,8 @@ def get_menu():
     return jsonify(items)
 
 
-# Read-only iiko menu (Option A: iiko is the source of truth). Separate from
-# /api/menu for now so the live site is untouched until we deliberately switch.
-# Default: display menu (iiko items + website images/translations overlay).
-# ?raw=1 returns the plain iiko menu; ?force=1 bypasses the cache.
-def _load_iiko_overlay(conn):
-    """All staff overlay edits as {iikoId: {name:{kz,en}, image, hidden}}."""
-    try:
-        rows = conn.execute("SELECT item_id, data FROM iiko_overlay").fetchall()
-        return {r["item_id"]: r["data"] for r in rows}
-    except Exception:
-        return {}  # table may not exist yet on a fresh DB
-
-
-def _load_iiko_cat_order(conn):
-    row = conn.execute("SELECT data FROM settings WHERE key='iiko_category_order'").fetchone()
-    order = (row["data"] or {}).get("order") if row else None
-    return order if isinstance(order, list) else None
-
-
-@app.route("/api/iiko/menu", methods=["GET"])
-def get_iiko_menu():
-    import iiko
-    try:
-        force = request.args.get("force") == "1"
-        if request.args.get("raw") == "1":
-            return jsonify(iiko.get_menu(force=force))
-        conn = get_db()
-        db_overlay = _load_iiko_overlay(conn)
-        cat_order = _load_iiko_cat_order(conn)
-        conn.close()
-        return jsonify(iiko.get_display_menu(force=force, db_overlay=db_overlay, cat_order=cat_order))
-    except iiko.IikoError as e:
-        return jsonify({"error": str(e)}), 502
-
-
-@app.route("/api/iiko/category-order", methods=["PUT"])
-@require_owner
-def save_iiko_category_order():
-    body = request.get_json() or {}
-    order = body.get("order")
-    if not isinstance(order, list) or not all(isinstance(x, str) for x in order):
-        return jsonify({"error": "bad_body"}), 400
-    conn = get_db()
-    conn.execute("""
-        INSERT INTO settings (key, data) VALUES ('iiko_category_order', %s)
-        ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data
-    """, (json.dumps({"order": order}),))
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True})
-
-
-# Staff overlay editor: read/save photo + kz/en names + hide flag per iiko item.
 IMG_RE = re.compile(r"^data:image/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$")
 
-
-@app.route("/api/iiko/overlay", methods=["GET"])
-@require_owner
-def get_iiko_overlay():
-    conn = get_db()
-    ov = _load_iiko_overlay(conn)
-    conn.close()
-    return jsonify({"items": ov})
-
-
-@app.route("/api/iiko/overlay", methods=["PUT"])
-@require_owner
-def save_iiko_overlay():
-    # Body: {items: {iikoId: {name:{kz,en}?, desc:{ru,kz,en}?, image?, hidden?,
-    # sortOrder?}}}. Only the fields present are changed — each item's existing
-    # overlay is MERGED, so saving a photo never wipes a previously-set name.
-    # image:null means "remove photo".
-    body = request.get_json() or {}
-    items = body.get("items") or {}
-    if not isinstance(items, dict):
-        return jsonify({"error": "bad_body"}), 400
-    conn = get_db()
-    rejected = {}
-    for iiko_id, raw in items.items():
-        raw = raw if isinstance(raw, dict) else {}
-        row = conn.execute("SELECT data FROM iiko_overlay WHERE item_id = %s", (str(iiko_id),)).fetchone()
-        data = dict(row["data"]) if row and isinstance(row["data"], dict) else {}
-        nm = raw.get("name")
-        if isinstance(nm, dict):
-            data["name"] = {"kz": str(nm.get("kz") or "").strip()[:120],
-                            "en": str(nm.get("en") or "").strip()[:120]}
-        ds = raw.get("desc")
-        if isinstance(ds, dict):
-            data["desc"] = {"ru": str(ds.get("ru") or "").strip()[:400],
-                            "kz": str(ds.get("kz") or "").strip()[:400],
-                            "en": str(ds.get("en") or "").strip()[:400]}
-        if "image" in raw:
-            img = raw.get("image")
-            if img is None:
-                data["image"] = None  # explicit removal (hides file-overlay image too)
-            elif isinstance(img, str) and len(img) <= 1_600_000 and IMG_RE.match(img):
-                data["image"] = img
-            else:
-                # Previously silently dropped, leaving the request looking
-                # successful while the photo just vanished. Now reported so
-                # the admin editor can tell staff it actually failed.
-                rejected[str(iiko_id)] = "image_too_large" if isinstance(img, str) and len(img) > 1_600_000 else "invalid_image"
-        if "hidden" in raw:
-            if raw.get("hidden"):
-                data["hidden"] = True
-            else:
-                data.pop("hidden", None)
-        if "deliveryAvailable" in raw:
-            if raw.get("deliveryAvailable") is False:
-                data["deliveryAvailable"] = False
-            else:
-                data.pop("deliveryAvailable", None)  # default: deliverable
-        if "sortOrder" in raw:
-            try:
-                data["sortOrder"] = int(raw["sortOrder"])
-            except (TypeError, ValueError):
-                pass
-        conn.execute(
-            "INSERT INTO iiko_overlay (item_id, data) VALUES (%s, %s) "
-            "ON CONFLICT (item_id) DO UPDATE SET data = EXCLUDED.data",
-            (str(iiko_id), json.dumps(data))
-        )
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True, "rejected": rejected})
 
 @app.route("/api/menu", methods=["POST"])
 @require_owner
@@ -348,11 +248,19 @@ def get_order(order_id):
 
 # 1. Standalone Turnstile Helper Function (No decorators here!)
 def turnstile_ok(token, ip):
-    r = http_requests.post(
-        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-        data={"secret": os.environ["TURNSTILE_SECRET"],
-              "response": token, "remoteip": ip})
-    return r.json().get("success", False)
+    if not isinstance(token, str) or not token or len(token) > 4096:
+        return False
+    try:
+        r = http_requests.post(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            data={"secret": os.environ["TURNSTILE_SECRET"],
+                  "response": token, "remoteip": ip},
+            timeout=5,
+        )
+        r.raise_for_status()
+        return r.json().get("success", False)
+    except (http_requests.RequestException, ValueError):
+        return False
 
 
 # Kazakhstan uses a single UTC+5 zone nationwide (incl. Shymkent) since the
@@ -492,7 +400,6 @@ def delivery_fee_for(cfg, lat, lng):
 BOOKING_BUFFER_MIN = 20        # cleaning gap before the next party arrives
 BOOKING_MIN_VISIT_MIN = 60     # shorter windows are not offered at all
 BOOKING_DEFAULT_STAY_MIN = 180  # assumed stay until staff record departure
-BOOKING_ACTIVE_FILTER = "status NOT IN ('cancelled','payment_failed','expired','done')"
 
 
 def _hhmm_to_min(s):
@@ -640,7 +547,8 @@ def room_slot(bookings, count, t):
 def bookings_for(conn, date, room_id=None):
     """Active bookings on a date (optionally one table size), as booking dicts."""
     rows = conn.execute(
-        "SELECT data FROM orders WHERE " + BOOKING_ACTIVE_FILTER
+        "SELECT data FROM orders "
+        "WHERE status NOT IN ('cancelled','payment_failed','expired','done')"
     ).fetchall()
     out = []
     for r in rows:
@@ -651,6 +559,291 @@ def bookings_for(conn, date, room_id=None):
         if b.get("date") == date and b.get("roomId") and (room_id is None or b["roomId"] == room_id):
             out.append(b)
     return out
+
+
+ORDER_TYPES = {"table", "pickup", "delivery", "booking"}
+ORDER_ID_RE = re.compile(
+    r"^o(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-"
+    r"[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|[A-Za-z0-9]{20,80})$"
+)
+MAX_ORDER_LINES = 100
+MAX_ORDER_QUANTITY = 100
+MAX_MENU_PRICE = 100_000_000
+
+
+def _bounded_int(value, error, minimum, maximum):
+    if isinstance(value, bool):
+        raise ValueError(error)
+    if isinstance(value, float) and not value.is_integer():
+        raise ValueError(error)
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(error) from None
+    if isinstance(value, str) and str(number) != value.strip():
+        raise ValueError(error)
+    if not minimum <= number <= maximum:
+        raise ValueError(error)
+    return number
+
+
+def _clean_text(value, error, maximum, required=False):
+    if value is None:
+        text = ""
+    elif isinstance(value, str):
+        text = value.strip()
+    else:
+        raise ValueError(error)
+    if len(text) > maximum or (required and not text):
+        raise ValueError(error)
+    return text
+
+
+def _clean_localized(value, error, maximum):
+    if isinstance(value, str):
+        return _clean_text(value, error, maximum, required=True)
+    if not isinstance(value, dict):
+        raise ValueError(error)
+    cleaned = {}
+    for lang in ("en", "ru", "kz"):
+        if lang in value:
+            cleaned[lang] = _clean_text(value[lang], error, maximum)
+    if not any(cleaned.values()):
+        raise ValueError(error)
+    return cleaned
+
+
+def _line_name(menu_item, size_label=None):
+    name = _clean_localized(menu_item.get("name"), "invalid_menu_name", 200)
+    if not size_label:
+        return name
+    if isinstance(name, str):
+        return f"{name} ({size_label})"
+    return {
+        lang: f"{text} ({size_label})"
+        for lang, text in name.items()
+    }
+
+
+def _approved_size_price(size):
+    if not isinstance(size, dict):
+        return None
+    try:
+        return _bounded_int(
+            size.get("price"), "invalid_menu_price", 1, MAX_MENU_PRICE
+        )
+    except ValueError:
+        return None
+
+
+def authoritative_order_items(conn, raw_items, allow_empty=False):
+    """Resolve public order lines against the server-owned menu.
+
+    Customer-supplied names and prices are display hints only. The stored
+    order always uses the current menu name, availability and price.
+    """
+    if not isinstance(raw_items, list) or len(raw_items) > MAX_ORDER_LINES:
+        raise ValueError("invalid_order_items")
+    if not raw_items:
+        if allow_empty:
+            return []
+        raise ValueError("empty_order")
+
+    menu_rows = conn.execute("SELECT id, data FROM menu").fetchall()
+    if not menu_rows:
+        raise ValueError("menu_unavailable")
+    menu_by_id = {str(row["id"]): row["data"] for row in menu_rows}
+
+    normalized = []
+    total_quantity = 0
+    for raw in raw_items:
+        if not isinstance(raw, dict):
+            raise ValueError("invalid_order_item")
+        item_id = _clean_text(raw.get("id"), "invalid_order_item", 120, required=True)
+        menu_item = menu_by_id.get(item_id)
+        if not isinstance(menu_item, dict) or menu_item.get("available") is False:
+            raise ValueError("menu_item_unavailable")
+
+        quantity = _bounded_int(
+            raw.get("qty"), "invalid_order_quantity", 1, MAX_ORDER_QUANTITY
+        )
+        total_quantity += quantity
+        if total_quantity > MAX_ORDER_QUANTITY:
+            raise ValueError("order_too_large")
+
+        sizes = menu_item.get("sizes")
+        size_label = None
+        if isinstance(sizes, list) and sizes:
+            requested_label = raw.get("sizeLabel")
+            chosen = None
+            if isinstance(requested_label, str) and requested_label.strip():
+                requested_label = requested_label.strip()
+                chosen = next(
+                    (
+                        size for size in sizes
+                        if isinstance(size, dict)
+                        and str(size.get("label", "")).strip() == requested_label
+                    ),
+                    None,
+                )
+            else:
+                # Compatibility for a customer with an older cached frontend:
+                # a claimed price may select one of the server-approved sizes,
+                # but can never introduce a new or cheaper price.
+                try:
+                    claimed_price = _bounded_int(
+                        raw.get("price"), "invalid_order_size", 1, MAX_MENU_PRICE
+                    )
+                except ValueError:
+                    claimed_price = None
+                matches = [
+                    size for size in sizes
+                    if _approved_size_price(size) == claimed_price
+                ]
+                if len(matches) == 1:
+                    chosen = matches[0]
+            if not chosen:
+                raise ValueError("invalid_order_size")
+            size_label = _clean_text(
+                chosen.get("label"), "invalid_order_size", 80, required=True
+            )
+            price = _bounded_int(
+                chosen.get("price"), "invalid_menu_price", 1, MAX_MENU_PRICE
+            )
+        else:
+            if raw.get("sizeLabel") not in (None, ""):
+                raise ValueError("invalid_order_size")
+            price = _bounded_int(
+                menu_item.get("price"), "invalid_menu_price", 1, MAX_MENU_PRICE
+            )
+
+        line = {
+            "id": item_id,
+            "name": _line_name(menu_item, size_label),
+            "price": price,
+            "qty": quantity,
+        }
+        if size_label:
+            line["sizeLabel"] = size_label
+        normalized.append(line)
+    return normalized
+
+
+def normalize_order_request(body):
+    """Keep only bounded fields used by the website and discard the captcha."""
+    if not isinstance(body, dict):
+        raise ValueError("invalid_order")
+    order_type = body.get("type")
+    if order_type not in ORDER_TYPES:
+        raise ValueError("invalid_order_type")
+
+    order_id = _clean_text(body.get("id"), "invalid_order_id", 81, required=True)
+    if not ORDER_ID_RE.fullmatch(order_id):
+        raise ValueError("invalid_order_id")
+    order = {
+        "id": order_id,
+        "num": _bounded_int(
+            body.get("num"), "invalid_order_number", 1, 1_000_000_000
+        ),
+        "ts": int(time.time() * 1000),
+        "type": order_type,
+        "comment": _clean_text(body.get("comment"), "invalid_comment", 1000),
+    }
+
+    if order_type == "booking":
+        raw_booking = body.get("booking")
+        if not isinstance(raw_booking, dict):
+            raise ValueError("booking_invalid")
+        room_id = raw_booking.get("roomId")
+        if room_id not in TABLE_IDS:
+            raise ValueError("booking_invalid")
+        date_text = _clean_text(
+            raw_booking.get("date"), "booking_invalid", 10, required=True
+        )
+        try:
+            booking_date = dt.date.fromisoformat(date_text)
+        except ValueError:
+            raise ValueError("booking_invalid") from None
+        today = dt.datetime.now(CAFE_TZ).date()
+        if not today <= booking_date <= today + dt.timedelta(days=366):
+            raise ValueError("booking_invalid")
+        time_text = _clean_text(
+            raw_booking.get("time"), "booking_invalid", 5, required=True
+        )
+        if _hhmm_to_min(time_text) is None:
+            raise ValueError("booking_invalid")
+        capacity = int(room_id[1:])
+        guests_raw = raw_booking.get("guests")
+        guests = None if guests_raw in (None, "") else _bounded_int(
+            guests_raw, "booking_invalid", 1, capacity
+        )
+        phone = _clean_text(
+            raw_booking.get("phone") or body.get("phone"),
+            "invalid_phone", 50, required=True,
+        )
+        order["phone"] = phone
+        order["booking"] = {
+            "roomId": room_id,
+            "roomName": _clean_localized(
+                raw_booking.get("roomName"), "booking_invalid", 120
+            ),
+            "capacity": capacity,
+            "date": date_text,
+            "time": time_text,
+            "guests": guests,
+            "phone": phone,
+        }
+    else:
+        order["name"] = _clean_text(
+            body.get("name"), "invalid_name", 120,
+            required=order_type in {"pickup", "delivery"},
+        )
+        order["phone"] = _clean_text(
+            body.get("phone"), "invalid_phone", 50,
+            required=order_type in {"pickup", "delivery"},
+        )
+        order["table"] = _clean_text(
+            body.get("table"), "invalid_table", 30,
+            required=order_type == "table",
+        )
+        order["address"] = _clean_text(
+            body.get("address"), "invalid_address", 500
+        )
+
+        scheduled = body.get("scheduledFor")
+        if scheduled not in (None, "") and order_type in {"pickup", "delivery"}:
+            scheduled = _bounded_int(
+                scheduled, "invalid_schedule", 1, 9_999_999_999_999
+            )
+            now_ms = int(time.time() * 1000)
+            if not now_ms < scheduled <= now_ms + 31 * 24 * 60 * 60 * 1000:
+                raise ValueError("invalid_schedule")
+            order["scheduledFor"] = scheduled
+        else:
+            order["scheduledFor"] = None
+
+    if order_type == "delivery":
+        try:
+            lat = float(body.get("lat"))
+            lng = float(body.get("lng"))
+        except (TypeError, ValueError):
+            raise ValueError("location_required") from None
+        if (not math.isfinite(lat) or not math.isfinite(lng)
+                or not -90 <= lat <= 90 or not -180 <= lng <= 180):
+            raise ValueError("location_required")
+        order["lat"] = lat
+        order["lng"] = lng
+        order["mapLink"] = f"https://2gis.kz/geo/{lng},{lat}"
+        order["mapLinkGoogle"] = f"https://maps.google.com/?q={lat},{lng}"
+
+    order["paymentMethod"] = (
+        "kaspi"
+        if order_type != "booking"
+        and body.get("paymentMethod") == "kaspi"
+        and kaspi_pay_url()
+        else "at_table"
+    )
+    return order
 
 
 def compute_service_total(items, order_type=None):
@@ -726,7 +919,9 @@ def accrue_order_commission(conn, order):
 @app.route("/api/orders", methods=["POST"])
 @limiter.limit("5 per minute")  # Locks down the order submission endpoint
 def place_order():
-    body = request.get_json()
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify(error="invalid_order"), 400
 
     # Run the invisible captcha check immediately before any logic or database calls
     if not turnstile_ok(body.get("captcha"), request.remote_addr):
@@ -738,7 +933,16 @@ def place_order():
         conn.close()
         return jsonify({"error": "closed"}), 403
 
-    order = request.get_json()
+    try:
+        order = normalize_order_request(body)
+        order["items"] = authoritative_order_items(
+            conn,
+            body.get("items"),
+            allow_empty=order["type"] == "booking",
+        )
+    except ValueError as exc:
+        conn.close()
+        return jsonify({"error": str(exc)}), 400
     # The server decides the initial status — never the client. Kaspi orders
     # wait for staff to confirm the money arrived; everything else starts as
     # a normal kitchen order. (Also blocks forged 'ready'/'done' submissions.)
@@ -784,11 +988,7 @@ def place_order():
     delivery_fee = 0
     if order.get("type") == "delivery":
         cfg = delivery_cfg(settings_row["data"] if settings_row else None)
-        try:
-            lat, lng = float(order.get("lat")), float(order.get("lng"))
-        except (TypeError, ValueError):
-            conn.close()
-            return jsonify({"error": "location_required"}), 400
+        lat, lng = order["lat"], order["lng"]
         fee = delivery_fee_for(cfg, lat, lng)
         if fee is None:
             conn.close()
@@ -805,6 +1005,12 @@ def place_order():
     if order["status"] != "awaiting_confirmation":
         accrue_order_commission(conn, order)
 
+    if conn.execute(
+        "SELECT 1 FROM orders WHERE id = %s", (order["id"],)
+    ).fetchone():
+        conn.close()
+        return jsonify({"error": "duplicate_order"}), 409
+
     conn.execute(
         "INSERT INTO orders (id, num, ts, status, payment_id, data) VALUES (%s, %s, %s, %s, %s, %s)",
         (order["id"], order["num"], order["ts"], order["status"],
@@ -812,58 +1018,9 @@ def place_order():
     )
     conn.commit()
 
-    # Push the order into iiko so kitchen/courier staff see it on their own
-    # iikoFront screen — best-effort, never lets an iiko problem touch the
-    # customer's response. Kaspi orders wait for staff to confirm payment
-    # (see update_order) before the kitchen is told about them.
-    if order["status"] != "awaiting_confirmation":
-        _send_order_to_iiko(order)
-
     conn.close()
     return jsonify({"ok": True})
 
-
-def _send_order_to_iiko(order):
-    # Kill-switch: order-sending is fully wired but deliberately off until we
-    # run a live test together (a real ticket hits the kitchen once this is
-    # on). Stop-list/menu sync is unaffected — those stay read-only and on.
-    if os.environ.get("IIKO_SEND_ORDERS", "").strip().lower() not in ("1", "true", "yes"):
-        return
-
-    # Runs off the request thread: iiko confirms orders asynchronously (a few
-    # seconds), and a slow or down iiko must never delay or fail the
-    # customer's checkout. The result is merged back onto the stored order so
-    # the admin panel can show whether the kitchen actually got it.
-    order_id = order["id"]
-    order_snapshot = dict(order)
-
-    def worker():
-        import iiko
-        try:
-            result = iiko.send_order(order_snapshot)
-        except Exception as e:
-            result = {"ok": False, "error": str(e)}
-        conn = get_db()
-        try:
-            row = conn.execute("SELECT data FROM orders WHERE id = %s", (order_id,)).fetchone()
-            if not row:
-                return
-            data = row["data"]
-            data["iikoSent"] = bool(result.get("ok"))
-            if result.get("ok"):
-                data["iikoOrderId"] = result.get("iikoOrderId")
-                data["iikoNumber"] = result.get("iikoNumber")
-                data.pop("iikoError", None)
-            else:
-                data["iikoError"] = result.get("error")
-                if result.get("iikoOrderId"):
-                    data["iikoOrderId"] = result.get("iikoOrderId")
-            conn.execute("UPDATE orders SET data = %s WHERE id = %s", (json.dumps(data), order_id))
-            conn.commit()
-        finally:
-            conn.close()
-
-    threading.Thread(target=worker, daemon=True).start()
 
 # Customer-facing message created when the status changes (website notifications)
 def order_notification_message(status, prep_minutes=None):
@@ -935,12 +1092,6 @@ def update_order(order_id):
                 (order_id, new_status, msg, now_ms)
             )
     conn.commit()
-
-    # Payment just got confirmed — only now does the kitchen learn about
-    # it, same as any other order. (Confirm goes straight to "cooking" in
-    # the current admin panel; "new" kept for compatibility.)
-    if old_status == "awaiting_confirmation" and new_status in ("new", "cooking"):
-        _send_order_to_iiko(order)
 
     conn.close()
     return jsonify({"ok": True})
@@ -1221,131 +1372,8 @@ except Exception as e:
     print("init_db failed at boot (non-fatal, relying on existing schema):", e)
 
 
-# ── iiko status mirror (Setup A, strictly read-only) ─────────────────────
-# iikoFront is where staff actually manage cooking; every ~45s this poller
-# reads each active order's status back from iiko and mirrors it onto our
-# copy, so the customer's tracking screen and notifications follow the
-# kitchen automatically ("ready" pressed in iikoFront → customer notified).
-# One-way by design: nothing here ever writes to iiko.
-_IIKO_DELIVERY_STATUS = {
-    "CookingStarted": "cooking",
-    "CookingCompleted": "ready",
-    "Waiting": "ready",
-    "OnWay": "ready",
-    "Delivered": "done",
-    "Closed": "done",
-    "Cancelled": "cancelled",
-}
-# Dine-in ("Обычный заказ") orders only expose coarse states via the API —
-# no cooking/ready. Fine: the customer is sitting at the table anyway.
-_IIKO_TABLE_STATUS = {"Closed": "done", "Deleted": "cancelled"}
-_STATUS_FORWARD = {"new": 0, "cooking": 1, "ready": 2, "done": 3}
-
-
-def _mirror_status(conn, order, new_status):
-    old = order.get("status")
-    if new_status == old:
-        return False
-    # Never move a status backwards (e.g. iiko still says CookingStarted
-    # after staff already pressed Завершить here).
-    if new_status != "cancelled" and \
-            _STATUS_FORWARD.get(new_status, -1) <= _STATUS_FORWARD.get(old, 99):
-        return False
-    now_ms = int(time.time() * 1000)
-    order["status"] = new_status
-    if new_status == "ready":
-        order["ready_at"] = now_ms
-    elif new_status == "done":
-        order["completed_at"] = now_ms
-    elif new_status == "cancelled":
-        order["cancelled_at"] = now_ms
-    conn.execute("UPDATE orders SET status = %s, data = %s WHERE id = %s",
-                 (new_status, json.dumps(order), order["id"]))
-    msg = order_notification_message(new_status, order.get("preparation_minutes"))
-    if msg:
-        conn.execute(
-            "INSERT INTO notifications (order_id, status, message, ts) VALUES (%s, %s, %s, %s)",
-            (order["id"], new_status, msg, now_ms))
-    return True
-
-
-def _iiko_mirror_tick():
-    import iiko
-    conn = get_db()
-    try:
-        rows = conn.execute(
-            "SELECT data FROM orders WHERE status IN ('new','cooking','ready')"
-        ).fetchall()
-        # Bookings never reach iiko (no iikoOrderId) and drop out here.
-        active = [r["data"] for r in rows
-                  if isinstance(r["data"], dict) and r["data"].get("iikoOrderId")]
-        if not active:
-            return
-        buckets = {"delivery": [], "table": []}
-        for o in active:
-            buckets["table" if o.get("type") == "table" else "delivery"].append(o)
-        for kind, group in buckets.items():
-            if not group:
-                continue
-            statuses = iiko.get_order_statuses(
-                [o["iikoOrderId"] for o in group], is_delivery=(kind == "delivery"))
-            mapping = _IIKO_DELIVERY_STATUS if kind == "delivery" else _IIKO_TABLE_STATUS
-            for o in group:
-                mapped = mapping.get(statuses.get(o["iikoOrderId"]))
-                if mapped:
-                    _mirror_status(conn, o, mapped)
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _iiko_mirror_loop():
-    while True:
-        time.sleep(45)
-        if os.environ.get("IIKO_SEND_ORDERS", "").strip().lower() not in ("1", "true", "yes"):
-            continue  # same kill-switch as order-sending
-        try:
-            _iiko_mirror_tick()
-        except Exception as e:
-            print("iiko status mirror tick failed:", e)
-
-
-threading.Thread(target=_iiko_mirror_loop, daemon=True).start()
-
 if __name__ == "__main__":
     from payments import payments
 
     app.register_blueprint(payments)
     app.run(port=5000)
-    PRINTER_TOKEN = os.environ["PRINTER_TOKEN"]  # one long random secret
-
-
-    def check_printer(req):
-        return req.headers.get("Authorization", "").removeprefix("Bearer ") == PRINTER_TOKEN
-
-
-    @app.route("/api/print-jobs/claim", methods=["POST"])
-    def claim_jobs():
-        if not check_printer(request): return jsonify(error="no"), 401
-        conn = get_db()
-        rows = conn.execute("""
-            UPDATE print_jobs SET status='claimed', attempts=attempts+1
-            WHERE id IN (SELECT id FROM print_jobs WHERE status='queued'
-                         ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 5)
-            RETURNING id, payload
-        """).fetchall()
-        conn.commit();
-        conn.close()
-        return jsonify(jobs=[dict(r) for r in rows])
-
-
-    @app.route("/api/print-jobs/<job_id>/done", methods=["POST"])
-    def job_done(job_id):
-        if not check_printer(request): return jsonify(error="no"), 401
-        ok = request.get_json().get("printed", False)
-        conn = get_db()
-        conn.execute("UPDATE print_jobs SET status=%s WHERE id=%s",
-                     ("printed" if ok else "failed", job_id))
-        conn.commit();
-        conn.close()
-        return jsonify(ok=True)

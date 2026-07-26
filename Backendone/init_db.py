@@ -23,15 +23,6 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY, data JSONB NOT NULL
 );""")
 conn.execute("""
-CREATE TABLE IF NOT EXISTS print_jobs (
-    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    order_id TEXT NOT NULL,
-    payload JSONB NOT NULL,
-    status TEXT NOT NULL DEFAULT 'queued',
-    attempts INT NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT now()
-);""")
-conn.execute("""
 CREATE TABLE IF NOT EXISTS ledger (
     id INTEGER PRIMARY KEY DEFAULT 1,
     accrued BIGINT NOT NULL DEFAULT 0,
