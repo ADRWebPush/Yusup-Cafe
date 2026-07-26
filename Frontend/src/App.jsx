@@ -541,9 +541,8 @@ const T = {
 
 // Backend base URL. Set VITE_API_URL at build time to point this deployment
 // at its own backend; the fallback keeps local dev working out of the box.
-// NOTE: the fallback is the ORIGINAL project's backend — set VITE_API_URL for
-// any deploy that must stay isolated from it.
-const API = import.meta.env.VITE_API_URL || "https://aspan-cafe-backend.onrender.com";
+// The fallback is Yusup Cafe's backend and never crosses into another cafe.
+const API = import.meta.env.VITE_API_URL || "https://yusup-cafe.onrender.com";
 
 const fmt = (n) => n.toLocaleString("ru-RU") + " ₸";
 // Mandatory 10% service charge. The backend re-computes and enforces this on
@@ -615,9 +614,9 @@ function resolveCartLine(menu, cartId) {
   if (!item) return null;
   if (item.sizes && sizeIdxRaw !== undefined) {
     const size = item.sizes[Number(sizeIdxRaw)];
-    if (size) return { item, price: size.price, sizeLabel: size.label, iikoId: size.iikoId || item.id };
+    if (size) return { item, price: size.price, sizeLabel: size.label };
   }
-  return { item, price: item.price, sizeLabel: null, iikoId: item.id };
+  return { item, price: item.price, sizeLabel: null };
 }
 
 const SIZE_FRIENDLY_CATS = new Set(["cold", "hot"]);
@@ -712,61 +711,6 @@ async function apiGetMenu() {
   catch (e) { return null; }
 }
 
-// iiko-driven menu (Option A). Fetched only in preview mode (?iiko=1) for now;
-// the default site keeps using apiGetMenu until we deliberately switch.
-async function apiGetIikoMenu() {
-  try { const r = await fetch(`${API}/api/iiko/menu`); const d = await r.json(); return d && d.categories ? d : null; }
-  catch (e) { return null; }
-}
-// Staff overlay edits (photo + kz/en names + descriptions + order) for iiko
-// dishes, keyed by iiko id.
-// Returns true/false, or the set of item ids the server rejected (e.g. a
-// photo too large after compression) — those saved everything EXCEPT the
-// photo, so callers must not treat that as a silent full success.
-async function apiSaveIikoOverlay(items) {
-  try {
-    const r = await fetch(`${API}/api/iiko/overlay`, { method: "PUT", headers: authHeaders(), body: JSON.stringify({ items }) });
-    if (!r.ok) return false;
-    const data = await r.json().catch(() => null);
-    const rejected = data && data.rejected;
-    return (rejected && Object.keys(rejected).length) ? rejected : true;
-  } catch (e) { return false; }
-}
-async function apiSaveIikoCategoryOrder(order) {
-  try { const r = await fetch(`${API}/api/iiko/category-order`, { method: "PUT", headers: authHeaders(), body: JSON.stringify({ order }) }); return r.ok; }
-  catch (e) { return false; }
-}
-
-// Convert the backend's iiko display menu into the flat shape the guest site
-// already renders (items with cat + name{ru,kz,en} + price/sizes + emoji/tags/
-// image) plus a dynamic category catalog. iiko keeps most dishes as one size
-// each, so we only emit a sizes[] when an item genuinely has several prices.
-function adaptIikoMenu(display) {
-  const cats = (display.categories || []).map((c) => ({ id: c.id, ru: c.name, kz: c.name, en: c.name }));
-  const menu = [];
-  (display.categories || []).forEach((c) => {
-    (c.items || []).forEach((it) => {
-      const priced = (it.sizes || []).filter((s) => s.price != null);
-      const multi = priced.length > 1;
-      menu.push({
-        id: it.iikoId,
-        iikoId: it.iikoId,
-        cat: c.id,
-        name: it.name || { ru: "", kz: "", en: "" },
-        desc: it.desc || {},
-        price: it.price != null ? it.price : (priced[0] ? priced[0].price : 0),
-        // Keep each size's iiko id so an order can target the exact size later.
-        sizes: multi ? priced.map((s) => ({ label: s.name || "", price: s.price, iikoId: s.iikoId })) : undefined,
-        emoji: it.emoji || "🍽",
-        tags: it.tags || [],
-        image: it.image || null,
-        available: it.soldOut !== true,
-        deliveryAvailable: it.deliveryAvailable !== false,
-      });
-    });
-  });
-  return { menu, cats };
-}
 async function apiSaveMenu(items) {
   try {
     const r = await fetch(`${API}/api/menu`, { method: "POST", headers: authHeaders(), body: JSON.stringify(items) });
@@ -1564,7 +1508,7 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
 
   const entries = Object.entries(cart).map(([cartId, q]) => {
     const r = resolveCartLine(menu, cartId);
-    return r ? { cartId, item: r.item, price: r.price, sizeLabel: r.sizeLabel, iikoId: r.iikoId, q } : null;
+    return r ? { cartId, item: r.item, price: r.price, sizeLabel: r.sizeLabel, q } : null;
   }).filter(Boolean);
   const takeawayBlockedItems = !booking && (type === "pickup" || type === "delivery")
     ? entries.filter(({ item }) => item.deliveryAvailable === false)
@@ -1731,9 +1675,8 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
         booking: booking,
         items: entries.map((e) => ({
           id: e.item.id,
-          iikoId: e.iikoId,
           name: e.sizeLabel ? { en: `${e.item.name.en} (${e.sizeLabel})`, ru: `${e.item.name.ru} (${e.sizeLabel})`, kz: `${e.item.name.kz} (${e.sizeLabel})` } : e.item.name,
-          price: e.price, qty: e.q,
+          price: e.price, qty: e.q, sizeLabel: e.sizeLabel,
         })),
         subtotal, serviceFee, total: grandTotal,
         status: "new",
@@ -1751,9 +1694,8 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
         mapLinkGoogle: links ? links.google : null,
         items: entries.map((e) => ({
           id: e.item.id,
-          iikoId: e.iikoId,
           name: e.sizeLabel ? { en: `${e.item.name.en} (${e.sizeLabel})`, ru: `${e.item.name.ru} (${e.sizeLabel})`, kz: `${e.item.name.kz} (${e.sizeLabel})` } : e.item.name,
-          price: e.price, qty: e.q,
+          price: e.price, qty: e.q, sizeLabel: e.sizeLabel,
         })),
         subtotal, serviceFee,
         deliveryFee: type === "delivery" && deliveryFee > 0 ? deliveryFee : 0,
@@ -2399,12 +2341,10 @@ function BookingWizard({ open, onClose, lang, t, onProceed, cafeInfo }) {
 
 /* ── guest site ──────────────────────────────────────────────────────── */
 
-function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, cartTotal, goAdmin, lastOrder, orders, openBooking, openBoard, openPrivacy, cafeInfo, catalog }) {
+function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, cartTotal, goAdmin, lastOrder, orders, openBooking, openBoard, openPrivacy, cafeInfo }) {
   const [activeCat, setActiveCat] = useState("all");
   const [q, setQ] = useState("");
-  // In iiko preview mode the categories come from iiko (dynamic); otherwise
-  // from the curated CATS catalog via orderedCats.
-  const catList = useMemo(() => catalog || orderedCats(menu), [menu, catalog]);
+  const catList = useMemo(() => orderedCats(menu), [menu]);
 
   const filtered = useMemo(() => menu.filter((m) => {
     if (activeCat !== "all" && m.cat !== activeCat) return false;
@@ -2747,28 +2687,16 @@ function OrderCard({ o, lang, onStatus, onEditItems, onAckCall, onBookingEnd }) 
     await onBookingEnd(o.id, endT);
     setEndSaving(false);
   };
-  // Bookings never reach iiko, so staff run their full lifecycle here.
-  // Every other order is cooked under iikoFront's control and mirrored
-  // back automatically ("ready" pressed there → customer notified), so
-  // this card only confirms payment (asking the prep estimate the
-  // customer sees) and closes/cancels — no В работу/Готов buttons that
-  // staff could mistake for controlling the kitchen.
-  const isBooking = o.type === "booking";
-  const next = (isBooking ? {
+  const next = {
     awaiting_confirmation: ["new", lang === "en" ? "Payment received ✓" : "Оплата получена ✓"],
     new: ["cooking", lang === "en" ? "Start cooking" : "В работу"],
     cooking: ["ready", lang === "en" ? "Mark ready" : "Готов"],
     ready: ["done", lang === "en" ? "Complete" : "Завершить"],
-  } : {
-    awaiting_confirmation: ["cooking", lang === "en" ? "Payment received ✓" : "Оплата получена ✓"],
-    new: ["cooking", lang === "en" ? "Start cooking" : "В работу"],
-    cooking: ["done", lang === "en" ? "Complete" : "Завершить"],
-    ready: ["done", lang === "en" ? "Complete" : "Завершить"],
-  })[o.status];
-  // The prep-time question rides on whichever press starts cooking —
-  // dine-in skips it (the guest is at the table, no ETA needed).
+  }[o.status];
+  // Dine-in orders move straight to work; timers are only useful for takeaway,
+  // delivery and bookings.
   const advance = () => {
-    if (next[0] === "cooking" && o.type !== "table") setAskPrep(true);
+    if (o.status === "new" && o.type !== "table") setAskPrep(true);
     else onStatus(o.id, next[0]);
   };
   const scheduledFor = orderScheduledFor(o);
@@ -2809,19 +2737,6 @@ function OrderCard({ o, lang, onStatus, onEditItems, onAckCall, onBookingEnd }) 
           : `${lang === "en" ? "Pickup" : "С собой"}${o.name ? " · " + o.name : ""}${o.phone ? " · " + o.phone : ""}`
         }
       </div>
-      {(o.iikoSent || o.iikoError) && (
-        <div className="mt-1">
-          {o.iikoSent ? (
-            <span className="text-xs font-bold px-2 py-1 rounded-full" style={{ background: "#E9F1DF", color: "#3F7A2E" }}>
-              ✓ {L3(lang, "In iiko", "В iiko", "iiko-да")}{o.iikoNumber ? ` #${o.iikoNumber}` : ""}
-            </span>
-          ) : (
-            <span className="text-xs font-bold px-2 py-1 rounded-full" title={o.iikoError || ""} style={{ background: "#FAE5E3", color: "#933A34" }}>
-              {L3(lang, "Not sent to iiko", "Не ушёл в iiko", "iiko-ға кетпеді")}
-            </span>
-          )}
-        </div>
-      )}
       {o.type === "booking" && o.booking && (
         <div className="mt-2 rounded-xl p-3 text-sm" style={{ background: "#FBEFD9", border: `1px solid ${P.saff}` }}>
           <div className="font-extrabold" style={{ color: "#8A5A12" }}>{pickL(o.booking.roomName, lang)} · {lang === "en" ? "up to" : "до"} {o.booking.capacity}</div>
@@ -3109,209 +3024,6 @@ function OrderItemEditor({ order, menu, lang, onClose, onSave }) {
     </div>
   );
 }
-// Admin: iiko menu overlay editor. iiko owns the dishes/prices; here staff
-// attach a photo, Kazakh/English names, and a description to each dish, and
-// can reorder dishes within a category and reorder categories themselves.
-// Edits save to the DB overlay (per iiko itemId) and appear on the site
-// within a few minutes. For a grouped card (e.g. Американо 0,3/0,4) name/
-// desc/photo edits write to every size's id; order is per-card, not per-size.
-function IikoMenuEditor({ lang }) {
-  const L = (en, ru) => (lang === "en" ? en : ru);
-  const [cats, setCats] = useState(null);
-  const [dirty, setDirty] = useState({});   // iikoId -> {kz?,en?,descRu?,descKz?,descEn?,image?}
-  const [savingId, setSavingId] = useState(null);
-  const [openId, setOpenId] = useState(null); // which item's description panel is expanded
-  const [reordering, setReordering] = useState(null); // iikoId/catId mid-request, disables its own arrows
-
-  useEffect(() => {
-    (async () => { const d = await apiGetIikoMenu(); setCats(d && d.categories ? d.categories : []); })();
-  }, []);
-
-  const members = (it) => {
-    const ids = (it.sizes && it.sizes.length) ? it.sizes.map((s) => s.iikoId).filter(Boolean) : [it.iikoId];
-    return [...new Set(ids)];
-  };
-  const cur = (it, f) => {
-    const d = dirty[it.iikoId] || {};
-    if (f in d) return d[f];
-    if (f === "image") return it.image;
-    if (f === "descRu") return it.desc.ru || ""; if (f === "descKz") return it.desc.kz || ""; if (f === "descEn") return it.desc.en || "";
-    return it.name[f] || "";
-  };
-  const set = (it, f, v) => setDirty((p) => ({ ...p, [it.iikoId]: { ...(p[it.iikoId] || {}), [f]: v } }));
-
-  const pickPhoto = (it) => {
-    const inp = document.createElement("input");
-    inp.type = "file"; inp.accept = "image/jpeg,image/png,image/webp";
-    inp.onchange = async (e) => {
-      const f = e.target.files[0]; if (!f) return;
-      try { set(it, "image", await menuImageFromFile(f)); }
-      catch (err) { alert(L("Upload a JPG, PNG or WebP up to 6 MB.", "Загрузите JPG, PNG или WebP до 6 МБ.")); }
-    };
-    inp.click();
-  };
-
-  const save = async (it) => {
-    const d = dirty[it.iikoId] || {};
-    const entry = {};
-    if ("kz" in d || "en" in d) entry.name = { kz: cur(it, "kz"), en: cur(it, "en") };
-    if ("descRu" in d || "descKz" in d || "descEn" in d) entry.desc = { ru: cur(it, "descRu"), kz: cur(it, "descKz"), en: cur(it, "descEn") };
-    if ("image" in d) entry.image = d.image;
-    if (!Object.keys(entry).length) return;
-    const items = {}; members(it).forEach((id) => { items[id] = entry; });
-    setSavingId(it.iikoId);
-    const result = await apiSaveIikoOverlay(items);
-    setSavingId(null);
-    if (result === false) { alert(L("Save failed. Try again.", "Не удалось сохранить. Попробуйте ещё раз.")); return; }
-    // A truthy object means the server saved name/desc but rejected the
-    // photo (too large even after compression, or a corrupted file) —
-    // the old code treated this the same as full success and the photo
-    // silently vanished with no warning. Now it's surfaced explicitly.
-    const imageRejected = result !== true && "image" in entry;
-    if (imageRejected) {
-      alert(L("Name/description saved, but the photo could not be saved — try a smaller image.",
-              "Название/описание сохранены, но фото не сохранилось — попробуйте файл меньшего размера."));
-    }
-    const kz = cur(it, "kz"), en = cur(it, "en");
-    const image = imageRejected ? it.image : cur(it, "image"); // keep the old photo, don't show the failed one as if it saved
-    const desc = { ru: cur(it, "descRu"), kz: cur(it, "descKz"), en: cur(it, "descEn") };
-    setCats((cs) => cs.map((c) => ({ ...c, items: c.items.map((x) => x.iikoId === it.iikoId
-      ? { ...x, name: { ...x.name, kz, en }, desc, image } : x) })));
-    setDirty((p) => {
-      const n = { ...p };
-      if (imageRejected) { const { image: _drop, ...rest } = n[it.iikoId] || {}; if (Object.keys(rest).length) n[it.iikoId] = rest; else delete n[it.iikoId]; }
-      else delete n[it.iikoId];
-      return n;
-    });
-  };
-
-  // Deliverable/not-deliverable is a single clear toggle — save it instantly
-  // rather than batching it with the name/description "Save" button.
-  const toggleDelivery = async (it) => {
-    const next = !it.deliveryAvailable;
-    const items = {}; members(it).forEach((id) => { items[id] = { deliveryAvailable: next }; });
-    setSavingId(it.iikoId);
-    const ok = await apiSaveIikoOverlay(items);
-    setSavingId(null);
-    if (!ok) { alert(L("Save failed. Try again.", "Не удалось сохранить. Попробуйте ещё раз.")); return; }
-    setCats((cs) => cs.map((c) => ({ ...c, items: c.items.map((x) => x.iikoId === it.iikoId ? { ...x, deliveryAvailable: next } : x) })));
-  };
-
-  // Reorder within a category: swap two adjacent items and persist explicit
-  // sortOrder (0..n-1) for the WHOLE category, so order stays stable even for
-  // items that never had an explicit order before.
-  const moveItem = async (catId, idx, dir) => {
-    const c = cats.find((x) => x.id === catId);
-    const j = idx + dir;
-    if (!c || j < 0 || j >= c.items.length) return;
-    const items = [...c.items];
-    [items[idx], items[j]] = [items[j], items[idx]];
-    setReordering(items[idx].iikoId);
-    const payload = {};
-    items.forEach((it, i) => { members(it).forEach((id) => { payload[id] = { sortOrder: i }; }); });
-    const ok = await apiSaveIikoOverlay(payload);
-    setReordering(null);
-    if (!ok) { alert(L("Reorder failed. Try again.", "Не удалось изменить порядок. Попробуйте ещё раз.")); return; }
-    setCats((cs) => cs.map((x) => (x.id === catId ? { ...x, items } : x)));
-  };
-
-  const moveCat = async (idx, dir) => {
-    const j = idx + dir;
-    if (j < 0 || j >= cats.length) return;
-    const next = [...cats];
-    [next[idx], next[j]] = [next[j], next[idx]];
-    setReordering(next[idx].id);
-    const ok = await apiSaveIikoCategoryOrder(next.map((c) => c.id));
-    setReordering(null);
-    if (!ok) { alert(L("Reorder failed. Try again.", "Не удалось изменить порядок. Попробуйте ещё раз.")); return; }
-    setCats(next);
-  };
-
-  if (!cats) return <div className="text-sm text-center py-10" style={{ color: P.sub }}>{L("Loading iiko menu…", "Загружаем меню iiko…")}</div>;
-
-  return (
-    <>
-      <div className="rounded-xl px-4 py-3 text-xs mb-5" style={{ background: "#FBEFD9", color: "#8A5A12" }}>
-        {L("Dishes and prices come from iiko and can't be edited here. Add a photo, description, and Kazakh/English names, and reorder dishes/categories — changes appear on the site within a few minutes.",
-           "Блюда и цены берутся из iiko и здесь не редактируются. Добавьте фото, описание и казахское/английское название, поменяйте порядок блюд и категорий — на сайте появится через несколько минут.")}
-      </div>
-      {cats.map((c, catIdx) => (
-        <div key={c.id} className="mb-6">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="font-extrabold" style={{ fontFamily: FONT_DISPLAY, fontSize: 14 }}>{c.name} <span style={{ color: P.sub, fontWeight: 400 }}>· {c.items.length}</span></div>
-            <div className="flex gap-1">
-              <button type="button" disabled={catIdx === 0 || reordering} onClick={() => moveCat(catIdx, -1)}
-                className="w-8 h-8 rounded-full font-extrabold" style={{ background: P.card, color: P.txt, border: `1px solid ${P.line}`, opacity: catIdx === 0 ? 0.35 : 1 }}>↑</button>
-              <button type="button" disabled={catIdx === cats.length - 1 || reordering} onClick={() => moveCat(catIdx, 1)}
-                className="w-8 h-8 rounded-full font-extrabold" style={{ background: P.card, color: P.txt, border: `1px solid ${P.line}`, opacity: catIdx === cats.length - 1 ? 0.35 : 1 }}>↓</button>
-            </div>
-          </div>
-          <div className="flex flex-col gap-2">
-            {c.items.map((it, itemIdx) => {
-              const isDirty = !!dirty[it.iikoId];
-              const isOpen = openId === it.iikoId;
-              return (
-                <div key={it.iikoId} className="rounded-xl p-3" style={{ background: P.card, border: `1px solid ${isDirty ? P.teal : P.line}` }}>
-                  <div className="flex items-center gap-3">
-                    <div className="flex flex-col gap-1 flex-shrink-0">
-                      <button type="button" disabled={itemIdx === 0 || reordering} onClick={() => moveItem(c.id, itemIdx, -1)}
-                        className="w-6 h-6 rounded-full text-xs font-extrabold" style={{ background: P.bone, color: P.txt, border: `1px solid ${P.line}`, opacity: itemIdx === 0 ? 0.35 : 1 }}>↑</button>
-                      <button type="button" disabled={itemIdx === c.items.length - 1 || reordering} onClick={() => moveItem(c.id, itemIdx, 1)}
-                        className="w-6 h-6 rounded-full text-xs font-extrabold" style={{ background: P.bone, color: P.txt, border: `1px solid ${P.line}`, opacity: itemIdx === c.items.length - 1 ? 0.35 : 1 }}>↓</button>
-                    </div>
-                    <div onClick={() => pickPhoto(it)} className="relative w-14 h-14 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0 cursor-pointer group" style={{ background: P.bone }}>
-                      {cur(it, "image")
-                        ? <img src={cur(it, "image")} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        : <span style={{ fontSize: 22 }}>{it.emoji || "🍽"}</span>}
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "rgba(0,0,0,.45)" }}><span className="text-[10px] font-extrabold uppercase tracking-wide" style={{ color: "#fff" }}>{L("Photo", "Фото")}</span></div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-sm truncate" style={{ color: P.txt }}>
-                        {it.name.ru}{it.sizes && it.sizes.length ? ` · ${it.sizes.map((s) => s.label).join("/")}` : ""}
-                        <span className="font-normal" style={{ color: P.sub }}> · {it.price != null ? fmt(it.price) : ""}</span>
-                      </div>
-                      <div className="flex gap-2 mt-1.5 flex-wrap">
-                        <input value={cur(it, "kz")} onChange={(e) => set(it, "kz", e.target.value)} placeholder="Қазақша атауы"
-                          className="text-xs px-2 py-1.5 rounded-lg outline-none" style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt, width: 150 }} />
-                        <input value={cur(it, "en")} onChange={(e) => set(it, "en", e.target.value)} placeholder="English name"
-                          className="text-xs px-2 py-1.5 rounded-lg outline-none" style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt, width: 150 }} />
-                        <button type="button" onClick={() => setOpenId(isOpen ? null : it.iikoId)}
-                          className="text-xs font-bold px-2.5 py-1.5 rounded-lg" style={{ background: isOpen ? P.ink : P.bone, color: isOpen ? "#fff" : P.sub, border: `1px solid ${P.line}` }}>
-                          {L("Description", "Описание")} {isOpen ? "▲" : "▼"}
-                        </button>
-                        <button type="button" disabled={savingId === it.iikoId} onClick={() => toggleDelivery(it)}
-                          className="text-xs font-bold px-2.5 py-1.5 rounded-lg"
-                          style={{ background: it.deliveryAvailable ? "#E9F1DF" : "#FAE5E3", color: it.deliveryAvailable ? "#3F7A2E" : "#933A34", border: `1px solid ${it.deliveryAvailable ? "#BFD8A8" : "#E7A9A3"}` }}>
-                          {it.deliveryAvailable ? `${L("Deliverable", "Можно заказать")}` : `${L("Dine-in only", "Только в зале")}`}
-                        </button>
-                      </div>
-                      {cur(it, "image") && <button onClick={() => set(it, "image", null)} className="text-xs mt-1" style={{ color: P.red }}>{L("Remove photo", "Удалить фото")}</button>}
-                    </div>
-                    <button disabled={!isDirty || savingId === it.iikoId} onClick={() => save(it)}
-                      className="text-xs font-extrabold px-4 py-2 rounded-full flex-shrink-0"
-                      style={{ background: isDirty ? P.teal : P.line, color: isDirty ? "#fff" : P.sub, cursor: isDirty ? "pointer" : "default" }}>
-                      {savingId === it.iikoId ? "…" : L("Save", "Сохранить")}
-                    </button>
-                  </div>
-                  {isOpen && (
-                    <div className="mt-3 pt-3 grid grid-cols-1 sm:grid-cols-3 gap-2" style={{ borderTop: `1px solid ${P.line}` }}>
-                      <textarea value={cur(it, "descRu")} onChange={(e) => set(it, "descRu", e.target.value)} placeholder={L("Description (RU)", "Описание (RU)")} rows={2}
-                        className="text-xs px-2.5 py-2 rounded-lg outline-none resize-none" style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt }} />
-                      <textarea value={cur(it, "descKz")} onChange={(e) => set(it, "descKz", e.target.value)} placeholder={L("Description (KZ)", "Сипаттама (KZ)")} rows={2}
-                        className="text-xs px-2.5 py-2 rounded-lg outline-none resize-none" style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt }} />
-                      <textarea value={cur(it, "descEn")} onChange={(e) => set(it, "descEn", e.target.value)} placeholder={L("Description (EN)", "Description (EN)")} rows={2}
-                        className="text-xs px-2.5 py-2 rounded-lg outline-none resize-none" style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt }} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}
 function AdminPanel({ lang, setLang, menu, saveMenu, orders, updateStatus, ackCall, setBookingEnd, refreshOrders, goSite, cafeInfo, saveCafeStatus }) {
   const [tab, setTab] = useState("orders");
   const [filter, setFilter] = useState("type:table");
@@ -3325,8 +3037,7 @@ function AdminPanel({ lang, setLang, menu, saveMenu, orders, updateStatus, ackCa
   const [editingOrderItems, setEditingOrderItems] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   // Fresh orders staff haven't acknowledged yet — drives a repeating alarm
-  // and a persistent banner on every admin tab (one quiet chime was too easy
-  // to miss, and iiko gives no alert at all for dine-in orders).
+  // and a persistent banner on every admin tab.
   const [unackedOrders, setUnackedOrders] = useState([]);
   const notifiedOrderIds = React.useRef(new Set());
   const didInitOrderNotice = React.useRef(false);
@@ -3556,7 +3267,7 @@ const handleSaveItems = async (id, items, total) => {
           </div>
         </div>
         <div className="max-w-5xl mx-auto px-4 pb-3 flex gap-2">
-          {[["orders", L("Orders", "Заказы")], ["iiko", L("Menu", "Меню")], ["stats", L("Analytics", "Аналитика")], ["finance", L("Finance", "Финансы")], ["schedule", L("Schedule", "График")]].map(([id, label]) => (
+          {[["orders", L("Orders", "Заказы")], ["menu", L("Menu", "Меню")], ["stats", L("Analytics", "Аналитика")], ["finance", L("Finance", "Финансы")], ["schedule", L("Schedule", "График")]].map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)} className="relative text-sm font-bold px-4 py-2 rounded-full"
               style={{ background: tab === id ? P.teal : "rgba(255,255,255,.08)", color: "#fff" }}>
               {label}
@@ -3660,8 +3371,6 @@ const handleSaveItems = async (id, items, total) => {
             )}
           </>
         )}
-
-        {tab === "iiko" && <IikoMenuEditor lang={lang} />}
 
         {tab === "menu" && (
           <>
@@ -4019,23 +3728,13 @@ export default function App() {
   const [boardOpen, setBoardOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [activeBooking, setActiveBooking] = useState(null); // set while a reservation is in progress
-  // iiko is now the live menu (source of truth). iikoCats holds its dynamic
-  // categories; null while falling back to the curated menu (iiko unavailable).
-  const [iikoCats, setIikoCats] = useState(null);
 
   const t = useCallback((k) => T[lang][k] || k, [lang]);
 
     useEffect(() => {
     (async () => {
-      // iiko drives the menu everywhere (guest, cart, admin). If iiko is
-      // unreachable, fall back to the curated menu so the site is never empty.
-      const d = await apiGetIikoMenu();
-      if (d) { const { menu: im, cats } = adaptIikoMenu(d); setMenu(im); setIikoCats(cats); }
-      else {
-        const m = await apiGetMenu();
-        setMenu(m && Array.isArray(m) && m.length ? m : SEED);
-        setIikoCats(null);
-      }
+      const m = await apiGetMenu();
+      setMenu(m && Array.isArray(m) && m.length ? m : SEED);
       const o = await apiGetOrders();
       setOrders(Array.isArray(o) ? o : []);
       // Restore order tracking after a reload (last 24h only) so the customer
@@ -4204,7 +3903,7 @@ export default function App() {
             openCart={() => setCartOpen(true)} cartCount={cartCount} cartTotal={cartTotal}
             goAdmin={() => setView("admin")} lastOrder={lastOrder} orders={orders}
             openBooking={() => setBookingOpen(true)} openBoard={() => setBoardOpen(true)}
-            openPrivacy={() => setPrivacyOpen(true)} catalog={iikoCats} />
+            openPrivacy={() => setPrivacyOpen(true)} />
           <OrdersBoard open={boardOpen} onClose={() => setBoardOpen(false)} orders={orders}
             lang={lang} t={t} refreshOrders={refreshOrders} />
           <BookingWizard open={bookingOpen} onClose={() => setBookingOpen(false)} lang={lang} t={t} cafeInfo={cafeInfo}

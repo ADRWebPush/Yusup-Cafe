@@ -1,0 +1,739 @@
+[
+  {
+    "id": "combo1",
+    "cat": "combo",
+    "emoji": "🍢",
+    "price": 14500,
+    "tags": [
+      "hit"
+    ],
+    "available": true,
+    "name": {
+      "en": "Combo 1",
+      "ru": "Комбо 1",
+      "kz": "Комбо 1"
+    },
+    "desc": {
+      "en": "5 duck, 5 chicken, 5 lamb, 10 minced · +2 sauces · 25 skewers",
+      "ru": "5 утка, 5 куриный, 5 кусковой, 10 фарш · +2 соуса · 25 палочек",
+      "kz": "5 үйрек, 5 тауық, 5 кесек ет, 10 фарш · +2 соус · 25 таяқша"
+    }
+  },
+  {
+    "id": "combo2",
+    "cat": "combo",
+    "emoji": "🍢",
+    "price": 14000,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Combo 2",
+      "ru": "Комбо 2",
+      "kz": "Комбо 2"
+    },
+    "desc": {
+      "en": "5 duck, 5 chicken, 1 chicken portion, 10 minced · +2 sauces · 20 skewers",
+      "ru": "5 утка, 5 куриный, 1 порц. чикен, 10 фарш · +2 соуса · 20 палочек",
+      "kz": "5 үйрек, 5 тауық, 1 порц. чикен, 10 фарш · +2 соус · 20 таяқша"
+    }
+  },
+  {
+    "id": "combo3",
+    "cat": "combo",
+    "emoji": "🍢",
+    "price": 15000,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Combo 3",
+      "ru": "Комбо 3",
+      "kz": "Комбо 3"
+    },
+    "desc": {
+      "en": "20 minced · +2 white sauces · 20 skewers",
+      "ru": "20 фарш · +2 белых соуса · 20 палочек",
+      "kz": "20 фарш · +2 ақ соус · 20 таяқша"
+    }
+  },
+  {
+    "id": "combo4",
+    "cat": "combo",
+    "emoji": "🍢",
+    "price": 17000,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Combo 4",
+      "ru": "Комбо 4",
+      "kz": "Комбо 4"
+    },
+    "desc": {
+      "en": "10 duck, 10 chicken, 10 minced · +2 sauces · 30 skewers",
+      "ru": "10 утка, 10 куриный, 10 фарш · +2 соуса · 30 палочек",
+      "kz": "10 үйрек, 10 тауық, 10 фарш · +2 соус · 30 таяқша"
+    }
+  },
+  {
+    "id": "combomax",
+    "cat": "combo",
+    "emoji": "🔥",
+    "price": 27000,
+    "tags": [
+      "hit"
+    ],
+    "available": true,
+    "name": {
+      "en": "Combo PRO MAX",
+      "ru": "Комбо PRO MAX",
+      "kz": "Комбо PRO MAX"
+    },
+    "desc": {
+      "en": "10 duck, 10 chicken, 10 lamb, 10 minced, 1.5 chicken · +2 white +3 sauces · 40 skewers",
+      "ru": "10 утка, 10 куриный, 10 кусковой, 10 фарш, 1.5 порц. чикен · +2 бел. +3 соуса · 40 палочек",
+      "kz": "10 үйрек, 10 тауық, 10 кесек ет, 10 фарш, 1.5 чикен · +2 ақ +3 соус · 40 таяқша"
+    }
+  },
+  {
+    "id": "sh_utka",
+    "cat": "shashlyk",
+    "emoji": "🦆",
+    "price": 600,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Duck skewer",
+      "ru": "Шашлык из утки",
+      "kz": "Үйрек шашлық"
+    },
+    "desc": {
+      "en": "One skewer",
+      "ru": "Одна палочка",
+      "kz": "Бір таяқша"
+    }
+  },
+  {
+    "id": "sh_kur",
+    "cat": "shashlyk",
+    "emoji": "🍗",
+    "price": 600,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Chicken skewer",
+      "ru": "Куриный шашлык",
+      "kz": "Тауық шашлық"
+    },
+    "desc": {
+      "en": "One skewer",
+      "ru": "Одна палочка",
+      "kz": "Бір таяқша"
+    }
+  },
+  {
+    "id": "sh_kus",
+    "cat": "shashlyk",
+    "emoji": "🥩",
+    "price": 700,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Lamb chunk skewer",
+      "ru": "Кусковой шашлык",
+      "kz": "Кесек ет шашлық"
+    },
+    "desc": {
+      "en": "One skewer",
+      "ru": "Одна палочка",
+      "kz": "Бір таяқша"
+    }
+  },
+  {
+    "id": "sh_farsh",
+    "cat": "shashlyk",
+    "emoji": "🍢",
+    "price": 600,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Minced skewer (lyulya)",
+      "ru": "Шашлык из фарша (люля)",
+      "kz": "Фарш шашлық"
+    },
+    "desc": {
+      "en": "One skewer",
+      "ru": "Одна палочка",
+      "kz": "Бір таяқша"
+    }
+  },
+  {
+    "id": "sh_chiken",
+    "cat": "shashlyk",
+    "emoji": "🍗",
+    "price": 800,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Chicken (chiken)",
+      "ru": "Чикен",
+      "kz": "Чикен"
+    },
+    "desc": {
+      "en": "Portion",
+      "ru": "Порция",
+      "kz": "Порция"
+    }
+  },
+  {
+    "id": "fc_sorpa",
+    "cat": "soups",
+    "emoji": "🍲",
+    "price": 1000,
+    "priceMax": 1200,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Sorpa (broth)",
+      "ru": "Сорпа",
+      "kz": "Сорпа"
+    },
+    "desc": {
+      "en": "Rich meat broth",
+      "ru": "Наваристый мясной бульон",
+      "kz": "Қою ет сорпасы"
+    }
+  },
+  {
+    "id": "fc_pelmeni",
+    "cat": "soups",
+    "emoji": "🥟",
+    "price": 1200,
+    "priceMax": 1400,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Pelmeni",
+      "ru": "Пельмени",
+      "kz": "Пельмень"
+    },
+    "desc": {
+      "en": "Meat dumplings in broth",
+      "ru": "Мясные пельмени в бульоне",
+      "kz": "Сорпадағы ет пельмень"
+    }
+  },
+  {
+    "id": "fc_suyru",
+    "cat": "soups",
+    "emoji": "🍜",
+    "price": 1200,
+    "priceMax": 1400,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Suyru lagman (soup)",
+      "ru": "Сүйру лагман",
+      "kz": "Сүйру лағман"
+    },
+    "desc": {
+      "en": "Hand-pulled noodle soup",
+      "ru": "Суп с домашней лапшой",
+      "kz": "Үй кеспесі бар сорпа"
+    }
+  },
+  {
+    "id": "fc_kuksu",
+    "cat": "soups",
+    "emoji": "🍜",
+    "price": 1200,
+    "priceMax": 1400,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Kuksu",
+      "ru": "Куксу",
+      "kz": "Куксу"
+    },
+    "desc": {
+      "en": "Cold noodle soup",
+      "ru": "Холодный суп с лапшой",
+      "kz": "Салқын кеспе сорпасы"
+    }
+  },
+  {
+    "id": "fc_naryn",
+    "cat": "soups",
+    "emoji": "🍜",
+    "price": 1300,
+    "priceMax": 1500,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Naryn",
+      "ru": "Нарын",
+      "kz": "Нарын"
+    },
+    "desc": {
+      "en": "Noodles with horse meat",
+      "ru": "Лапша с кониной",
+      "kz": "Жылқы етімен кеспе"
+    }
+  },
+  {
+    "id": "mc_manty",
+    "cat": "mains",
+    "emoji": "🥟",
+    "price": 1400,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Manty",
+      "ru": "Манты",
+      "kz": "Манты"
+    },
+    "desc": {
+      "en": "Steamed meat dumplings",
+      "ru": "Паровые манты с мясом",
+      "kz": "Буға пісірілген манты"
+    }
+  },
+  {
+    "id": "mc_tefteli",
+    "cat": "mains",
+    "emoji": "🍖",
+    "price": 1800,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Meatballs",
+      "ru": "Тефтели",
+      "kz": "Тефтели"
+    },
+    "desc": {
+      "en": "Meatballs in sauce",
+      "ru": "Тефтели в соусе",
+      "kz": "Соустағы тефтели"
+    }
+  },
+  {
+    "id": "mc_brizol",
+    "cat": "mains",
+    "emoji": "🍳",
+    "price": 1600,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Brizol",
+      "ru": "Бризоль",
+      "kz": "Бризоль"
+    },
+    "desc": {
+      "en": "Meat in an omelette wrap",
+      "ru": "Мясо в яичном блинчике",
+      "kz": "Жұмыртқа қабығындағы ет"
+    }
+  },
+  {
+    "id": "mc_guyru",
+    "cat": "mains",
+    "emoji": "🍜",
+    "price": 1600,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Fried lagman",
+      "ru": "Гуйру лагман",
+      "kz": "Гуйру лағман"
+    },
+    "desc": {
+      "en": "Stir-fried noodles with meat",
+      "ru": "Жареная лапша с мясом",
+      "kz": "Етпен қуырылған кеспе"
+    }
+  },
+  {
+    "id": "mc_comyan",
+    "cat": "mains",
+    "emoji": "🍜",
+    "price": 1600,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Tsomyan (fried noodles)",
+      "ru": "Цомян",
+      "kz": "Цомян"
+    },
+    "desc": {
+      "en": "Uyghur-style fried noodles",
+      "ru": "Жареная лапша по-уйгурски",
+      "kz": "Ұйғырша қуырылған кеспе"
+    }
+  },
+  {
+    "id": "mc_bifshteks",
+    "cat": "mains",
+    "emoji": "🥩",
+    "price": 1600,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Beefsteak",
+      "ru": "Бифштекс",
+      "kz": "Бифштекс"
+    },
+    "desc": {
+      "en": "Pan-fried beef patty",
+      "ru": "Жареный говяжий бифштекс",
+      "kz": "Қуырылған сиыр бифштексі"
+    }
+  },
+  {
+    "id": "mc_gulyash",
+    "cat": "mains",
+    "emoji": "🍲",
+    "price": 1600,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Goulash",
+      "ru": "Гуляш",
+      "kz": "Гуляш"
+    },
+    "desc": {
+      "en": "Beef stew with gravy",
+      "ru": "Гуляш из говядины с подливой",
+      "kz": "Тұздықпен сиыр гуляшы"
+    }
+  },
+  {
+    "id": "mc_plov",
+    "cat": "mains",
+    "emoji": "🍛",
+    "price": 1600,
+    "tags": [
+      "hit"
+    ],
+    "available": true,
+    "name": {
+      "en": "Plov",
+      "ru": "Плов",
+      "kz": "Палау"
+    },
+    "desc": {
+      "en": "Rice with meat and carrots",
+      "ru": "Рис с мясом и морковью",
+      "kz": "Ет пен сәбізі бар күріш"
+    }
+  },
+  {
+    "id": "mc_tabaka",
+    "cat": "mains",
+    "emoji": "🍗",
+    "price": 1700,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Chicken tabaka",
+      "ru": "Табака цыплята",
+      "kz": "Тапақа балапан"
+    },
+    "desc": {
+      "en": "Flattened fried chicken",
+      "ru": "Цыпленок табака",
+      "kz": "Жалпақталған қуырылған балапан"
+    }
+  },
+  {
+    "id": "mc_kazan",
+    "cat": "mains",
+    "emoji": "🍖",
+    "price": 2300,
+    "tags": [
+      "hit"
+    ],
+    "available": true,
+    "name": {
+      "en": "Kazan kebab",
+      "ru": "Казан кебаб",
+      "kz": "Қазан кебаб"
+    },
+    "desc": {
+      "en": "Meat and potatoes from the cauldron",
+      "ru": "Мясо с картофелем из казана",
+      "kz": "Қазандағы ет пен картоп"
+    }
+  },
+  {
+    "id": "mc_beshbarmak",
+    "cat": "mains",
+    "emoji": "🍲",
+    "price": 2300,
+    "tags": [
+      "hit"
+    ],
+    "available": true,
+    "name": {
+      "en": "Beshbarmak",
+      "ru": "Бешбармак",
+      "kz": "Бешбармақ"
+    },
+    "desc": {
+      "en": "Boiled meat with flat noodles",
+      "ru": "Отварное мясо с домашней лапшой",
+      "kz": "Қайнатылған ет пен қамыр"
+    }
+  },
+  {
+    "id": "sl_achuchuk",
+    "cat": "salads",
+    "emoji": "🥗",
+    "price": 850,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Achuchuk",
+      "ru": "Ачучук",
+      "kz": "Ашшық-чучук"
+    },
+    "desc": {
+      "en": "Tomato and onion salad",
+      "ru": "Салат из томатов и лука",
+      "kz": "Қызанақ пен пияз салаты"
+    }
+  },
+  {
+    "id": "sl_svezhiy",
+    "cat": "salads",
+    "emoji": "🥗",
+    "price": 850,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Fresh salad",
+      "ru": "Свежий",
+      "kz": "Балғын салат"
+    },
+    "desc": {
+      "en": "Fresh vegetables",
+      "ru": "Салат из свежих овощей",
+      "kz": "Балғын көкөніс салаты"
+    }
+  },
+  {
+    "id": "sl_thai",
+    "cat": "salads",
+    "emoji": "🥗",
+    "price": 1350,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Thai salad",
+      "ru": "Тайский",
+      "kz": "Тай салаты"
+    },
+    "desc": {
+      "en": "Thai-style salad",
+      "ru": "Салат по-тайски",
+      "kz": "Тайша салат"
+    }
+  },
+  {
+    "id": "sl_kapriz",
+    "cat": "salads",
+    "emoji": "🥗",
+    "price": 1350,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Men's caprice",
+      "ru": "Мужской каприз",
+      "kz": "Ер каприз"
+    },
+    "desc": {
+      "en": "Meat salad with vegetables",
+      "ru": "Мясной салат с овощами",
+      "kz": "Көкөніспен ет салаты"
+    }
+  },
+  {
+    "id": "sl_cezar",
+    "cat": "salads",
+    "emoji": "🥗",
+    "price": 1350,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Caesar",
+      "ru": "Цезарь",
+      "kz": "Цезарь"
+    },
+    "desc": {
+      "en": "Caesar with chicken",
+      "ru": "Цезарь с курицей",
+      "kz": "Тауықпен цезарь"
+    }
+  },
+  {
+    "id": "sl_yusup",
+    "cat": "salads",
+    "emoji": "🥗",
+    "price": 1500,
+    "tags": [
+      "hit"
+    ],
+    "available": true,
+    "name": {
+      "en": "Yusup salad",
+      "ru": "Юсуп салат",
+      "kz": "Юсуп салаты"
+    },
+    "desc": {
+      "en": "House special salad",
+      "ru": "Фирменный салат заведения",
+      "kz": "Мекеменің фирмалық салаты"
+    }
+  },
+  {
+    "id": "cd_cola",
+    "cat": "cold",
+    "emoji": "🥤",
+    "price": 300,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Coca-Cola",
+      "ru": "Кока-Кола",
+      "kz": "Кока-Кола"
+    },
+    "desc": {
+      "en": "Chilled",
+      "ru": "Охлажденная",
+      "kz": "Салқындатылған"
+    }
+  },
+  {
+    "id": "cd_maxi",
+    "cat": "cold",
+    "emoji": "🥤",
+    "price": 400,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Maxi cola",
+      "ru": "Макси кола",
+      "kz": "Макси кола"
+    },
+    "desc": {
+      "en": "Large serving",
+      "ru": "Большая порция",
+      "kz": "Үлкен порция"
+    }
+  },
+  {
+    "id": "cd_fanta",
+    "cat": "cold",
+    "emoji": "🥤",
+    "price": 250,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Fanta",
+      "ru": "Фанта",
+      "kz": "Фанта"
+    },
+    "desc": {
+      "en": "Chilled",
+      "ru": "Охлажденная",
+      "kz": "Салқындатылған"
+    }
+  },
+  {
+    "id": "cd_fuse",
+    "cat": "cold",
+    "emoji": "🧃",
+    "price": 250,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Fuse Tea",
+      "ru": "Фьюс чай",
+      "kz": "Фьюс шай"
+    },
+    "desc": {
+      "en": "Iced tea",
+      "ru": "Холодный чай",
+      "kz": "Салқын шай"
+    }
+  },
+  {
+    "id": "hd_black",
+    "cat": "hot",
+    "emoji": "🍵",
+    "price": 300,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Black tea",
+      "ru": "Чёрный чай",
+      "kz": "Қара шай"
+    },
+    "desc": {
+      "en": "Pot of black tea",
+      "ru": "Чайник черного чая",
+      "kz": "Бір шәйнек қара шай"
+    }
+  },
+  {
+    "id": "hd_green",
+    "cat": "hot",
+    "emoji": "🍵",
+    "price": 300,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Green tea",
+      "ru": "Зелёный чай",
+      "kz": "Жасыл шай"
+    },
+    "desc": {
+      "en": "Pot of green tea",
+      "ru": "Чайник зеленого чая",
+      "kz": "Бір шәйнек жасыл шай"
+    }
+  },
+  {
+    "id": "hd_tashkent",
+    "cat": "hot",
+    "emoji": "🍵",
+    "price": 400,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Tashkent tea",
+      "ru": "Ташкентский чай",
+      "kz": "Ташкент шайы"
+    },
+    "desc": {
+      "en": "Tashkent-style tea",
+      "ru": "Чай по-ташкентски",
+      "kz": "Ташкентше шай"
+    }
+  },
+  {
+    "id": "hd_coffee",
+    "cat": "hot",
+    "emoji": "☕",
+    "price": 250,
+    "tags": [],
+    "available": true,
+    "name": {
+      "en": "Coffee",
+      "ru": "Кофе",
+      "kz": "Кофе"
+    },
+    "desc": {
+      "en": "Freshly brewed",
+      "ru": "Свежесваренный",
+      "kz": "Жаңа қайнатылған"
+    }
+  }
+]
