@@ -2513,7 +2513,7 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
               </a>
               <a href="tel:+77753798243" className="no-underline font-extrabold text-sm px-5 py-3 rounded-full"
                 style={{ background: "rgba(250,245,236,.12)", color: "#fff", border: "1px solid rgba(250,245,236,.3)", backdropFilter: "blur(4px)" }}>
-                {L3(lang, "Call to order", "Позвонить для заказа", "Тапсырыс беру үшін қоңырау")}
+                {L3(lang, "Book", "Забронировать", "Брондау")}
               </a>
               <span className="text-xs font-bold px-3 py-2 rounded-full" style={{ background: "rgba(26,16,17,.55)", color: "#fff", border: "1px solid rgba(250,245,236,.14)" }}>
                 <span style={{ color: "#7FBF63" }}>●</span> {t("today")} {t("until")} 01:00
