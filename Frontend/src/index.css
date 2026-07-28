@@ -1,1 +1,65 @@
-@import "tailwindcss"
+@import "tailwindcss";
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+.yusup-hero-photo {
+  animation: yusup-photo-push 12s ease-in-out infinite alternate;
+  transform-origin: 68% 50%;
+  will-change: transform;
+}
+
+.yusup-laurel-drift-a,
+.yusup-laurel-drift-b {
+  display: block;
+  will-change: transform;
+}
+
+.yusup-laurel-drift-a {
+  animation: yusup-laurel-a 9s ease-in-out infinite alternate;
+}
+
+.yusup-laurel-drift-b {
+  animation: yusup-laurel-b 11s ease-in-out infinite alternate;
+}
+
+.yusup-ambient-paused {
+  animation-play-state: paused;
+}
+
+.yusup-motion-surface {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+@keyframes yusup-photo-push {
+  from { transform: scale(1); }
+  to { transform: scale(1.022); }
+}
+
+@keyframes yusup-laurel-a {
+  from { transform: translate3d(0, 0, 0) rotate(0deg); }
+  to { transform: translate3d(5px, -3px, 0) rotate(3deg); }
+}
+
+@keyframes yusup-laurel-b {
+  from { transform: translate3d(0, 0, 0) rotate(0deg); }
+  to { transform: translate3d(-4px, 4px, 0) rotate(-2deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .yusup-hero-photo,
+  .yusup-laurel-drift-a,
+  .yusup-laurel-drift-b {
+    animation: none !important;
+  }
+}

@@ -2,7 +2,17 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { AnimatePresence, LayoutGroup, motion, useAnimationControls, useReducedMotion } from "motion/react";
 import { salesTotalsForPeriods } from "./adminAnalytics.js";
+import {
+  MOTION,
+  menuItemVariants,
+  reducedSectionVariants,
+  sectionChildVariants,
+  sectionVariants,
+  useAmbientVisibility,
+  useCartFlight,
+} from "./motionSystem.js";
 
 /* ───────────────────────── Yusup Cafe ─────────────────────────
    Guest site + Admin panel in one app.
@@ -970,13 +980,46 @@ const LaurelSprig = ({ size = 60, rotate = 0, opacity = 0.55, color = P.saff, st
   </svg>
 );
 
+const AnimatedLaurel = ({
+  size,
+  rotate,
+  opacity,
+  style,
+  drift = "a",
+  delay = 0.36,
+  reducedMotion,
+  ambientActive,
+}) => (
+  <motion.div
+    aria-hidden="true"
+    className="absolute pointer-events-none select-none"
+    style={style}
+    initial={reducedMotion ? { opacity: 0 } : { opacity: 0, x: drift === "a" ? -4 : 4, y: 5 }}
+    animate={{ opacity: 1, x: 0, y: 0 }}
+    transition={{ duration: reducedMotion ? 0.14 : 0.64, delay: reducedMotion ? 0 : delay, ease: MOTION.ease.enter }}
+  >
+    <span className={`yusup-laurel-drift-${drift} ${ambientActive ? "" : "yusup-ambient-paused"}`}>
+      <LaurelSprig size={size} rotate={rotate} opacity={opacity} style={{ position: "static" }} />
+    </span>
+  </motion.div>
+);
+
 const Pill = ({ bg, fg, children }) => (
   <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: bg, color: fg }}>{children}</span>
 );
 
 const StatusPill = ({ s, lang }) => {
   const st = STATUS[s] || STATUS.new;
-  return <Pill bg={st.bg} fg={st.fg}>{st[lang]}</Pill>;
+  const reducedMotion = useReducedMotion();
+  return (
+    <motion.span layout
+      initial={{ opacity: 0.72 }}
+      animate={{ opacity: 1, backgroundColor: st.bg, color: st.fg }}
+      transition={{ duration: reducedMotion ? 0.01 : 0.28, ease: MOTION.ease.enter }}
+      className="text-xs font-bold px-2 py-0.5 rounded-full">
+      {st[lang]}
+    </motion.span>
+  );
 };
 
 // Price breakdown for a live cart / checkout. The service fee only applies
@@ -1037,68 +1080,116 @@ const prepMinutesLeft = (estimatedReadyAt, now) => Math.ceil((estimatedReadyAt -
 
 const QtyControl = ({ qty, onMinus, onPlus, dark, plusDim }) => (
   <div className="flex items-center gap-2">
-    <button onClick={onMinus} aria-label="minus" className="w-8 h-8 rounded-full font-bold text-lg leading-none"
-      style={{ background: dark ? "rgba(255,255,255,.12)" : P.bone, color: dark ? "#fff" : P.txt }}>−</button>
-    <span className="w-6 text-center font-extrabold">{qty}</span>
-    <button onClick={onPlus} aria-label="plus" className="w-8 h-8 rounded-full font-bold text-lg leading-none"
-      style={{ background: plusDim ? P.sub : P.teal, color: "#fff", cursor: plusDim ? "not-allowed" : "pointer" }}>+</button>
+    <motion.button whileTap={{ scale: 0.9 }} transition={{ duration: MOTION.duration.micro }}
+      onClick={onMinus} aria-label="minus" className="w-8 h-8 rounded-full font-bold text-lg leading-none"
+      style={{ background: dark ? "rgba(255,255,255,.12)" : P.bone, color: dark ? "#fff" : P.txt }}>−</motion.button>
+    <AnimatePresence mode="popLayout" initial={false}>
+      <motion.span key={qty} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
+        transition={{ duration: MOTION.duration.micro }} className="w-6 text-center font-extrabold">{qty}</motion.span>
+    </AnimatePresence>
+    <motion.button whileTap={{ scale: 0.9 }} transition={{ duration: MOTION.duration.micro }}
+      onClick={onPlus} aria-label="plus" className="w-8 h-8 rounded-full font-bold text-lg leading-none"
+      style={{ background: plusDim ? P.sub : P.teal, color: "#fff", cursor: plusDim ? "not-allowed" : "pointer" }}>+</motion.button>
   </div>
 );
 
 /* ── guest: dish card ────────────────────────────────────────────────── */
 
-function DishCard({ item, lang, t, image, cart, setQty, isClosed }) {
+function DishCard({ item, lang, t, image, cart, setQty, isClosed, index = 0, onAddFlight, reducedMotion }) {
   const cat = CATS.find((c) => c.id === item.cat);
   const off = !item.available;
   const hasSizes = Array.isArray(item.sizes) && item.sizes.length > 0;
   const [sizeIdx, setSizeIdx] = useState(0);
+  const cardRef = React.useRef(null);
   const activePrice = hasSizes ? item.sizes[sizeIdx].price : item.price;
   const cartId = hasSizes ? `${item.id}::${sizeIdx}` : item.id;
   const qty = cart[cartId] || 0;
   // Closed cafe blocks growing the cart, but not shrinking/removing it — a
   // stale cart from before closing time should still be editable downward.
-  const onPlus = () => { if (isClosed) { alert(t("cafeClosedAlert")); return; } setQty(cartId, qty + 1); };
+  const onPlus = () => {
+    if (isClosed) {
+      alert(t("cafeClosedAlert"));
+      return;
+    }
+    setQty(cartId, qty + 1);
+    onAddFlight?.({ sourceElement: cardRef.current, image, emoji: item.emoji });
+  };
   const onMinus = () => setQty(cartId, qty - 1);
   return (
-    <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: P.card, border: `1px solid ${P.line}`, opacity: off ? 0.55 : 1 }}>
-      <div className="relative flex items-center justify-center" style={{ background: cat?.tint || P.bone, height: 270, overflow: "hidden" }}>
-        {image ? (
-          <img src={image} alt={pickL(item.name, lang)} style={{ width: "100%", height: "100%", objectFit: "cover", filter: off ? "grayscale(1)" : "none" }} />
-        ) : (
-          <span style={{ fontSize: 52, filter: off ? "grayscale(1)" : "none" }} aria-hidden="true">{item.emoji}</span>
-        )}
-        <div className="absolute top-2 left-2 flex gap-1 flex-wrap">
-          {(item.tags || []).map((tg) => TAGS[tg] && <Pill key={tg} bg={TAGS[tg].bg} fg={TAGS[tg].fg}>{TAGS[tg][lang]}</Pill>)}
-        </div>
-        {off && <div className="absolute bottom-2 right-2"><Pill bg="#2b2b2b" fg="#fff">{t("soldOut")}</Pill></div>}
-      </div>
-      <div className="p-3 flex flex-col flex-1">
-        <div className="font-extrabold leading-snug" style={{ color: P.txt }}>{pickL(item.name, lang)}</div>
-        <div className="text-xs mt-1 flex-1" style={{ color: P.sub }}>{pickL(item.desc, lang)}</div>
-        {hasSizes && (
-          <div className="flex gap-1.5 mt-2">
-            {item.sizes.map((s, i) => (
-              <button key={s.label} type="button" onClick={() => setSizeIdx(i)}
-                className="text-xs font-bold px-2.5 py-1 rounded-full"
-                style={{ background: sizeIdx === i ? P.ink : P.bone, color: sizeIdx === i ? "#fff" : P.txt, border: `1px solid ${sizeIdx === i ? P.ink : P.line}` }}>
-                {s.label}
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="flex items-center justify-between mt-3">
-          <div className="font-extrabold" style={{ color: P.txt }}>{item.priceMax ? `${activePrice.toLocaleString("ru-RU")} – ${fmt(item.priceMax)}` : fmt(activePrice)}</div>
-          {off ? (
-            <span className="text-xs font-bold" style={{ color: P.sub }}>—</span>
-          ) : qty > 0 ? (
-            <QtyControl qty={qty} onMinus={onMinus} onPlus={onPlus} plusDim={isClosed} />
+    <motion.div
+      layout="position"
+      initial={reducedMotion ? { opacity: 0 } : menuItemVariants.hidden}
+      animate={menuItemVariants.visible}
+      exit={menuItemVariants.exit}
+      transition={{
+        duration: reducedMotion ? 0.01 : 0.32,
+        delay: reducedMotion ? 0 : Math.min(index, 5) * 0.035,
+        ease: MOTION.ease.enter,
+        layout: { duration: reducedMotion ? 0.01 : 0.34, ease: MOTION.ease.enter },
+      }}
+    >
+      <motion.article
+        ref={cardRef}
+        className="rounded-2xl overflow-hidden flex flex-col h-full yusup-motion-surface"
+        style={{ background: P.card, border: `1px solid ${P.line}`, opacity: off ? 0.55 : 1 }}
+        initial="rest"
+        animate="rest"
+        whileHover={reducedMotion ? undefined : "hover"}
+        whileTap={reducedMotion ? undefined : "pressed"}
+        variants={{
+          rest: { y: 0, scale: 1, boxShadow: "0 0 0 rgba(116,36,39,0)" },
+          hover: { y: -4, boxShadow: "0 14px 30px rgba(116,36,39,.16)" },
+          pressed: { scale: 0.985 },
+        }}
+        transition={{ duration: MOTION.duration.micro, ease: MOTION.ease.enter }}
+      >
+        <div className="relative flex items-center justify-center" style={{ background: cat?.tint || P.bone, height: 270, overflow: "hidden" }}>
+          {image ? (
+            <motion.img data-dish-visual src={image} alt={pickL(item.name, lang)}
+              variants={{ rest: { scale: 1 }, hover: { scale: 1.035 }, pressed: { scale: 1.015 } }}
+              transition={{ duration: 0.28, ease: MOTION.ease.enter }}
+              style={{ width: "100%", height: "100%", objectFit: "cover", filter: off ? "grayscale(1)" : "none" }} />
           ) : (
-            <button onClick={onPlus} className="text-sm font-bold px-3 py-1.5 rounded-full"
-              style={{ background: isClosed ? P.sub : P.ink, color: "#fff", cursor: isClosed ? "not-allowed" : "pointer" }}>{t("add")} +</button>
+            <motion.span data-dish-visual
+              variants={{ rest: { scale: 1 }, hover: { scale: 1.035 }, pressed: { scale: 0.98 } }}
+              style={{ fontSize: 52, filter: off ? "grayscale(1)" : "none" }} aria-hidden="true">{item.emoji}</motion.span>
           )}
+          <div className="absolute top-2 left-2 flex gap-1 flex-wrap">
+            {(item.tags || []).map((tg) => TAGS[tg] && <Pill key={tg} bg={TAGS[tg].bg} fg={TAGS[tg].fg}>{TAGS[tg][lang]}</Pill>)}
+          </div>
+          {off && <div className="absolute bottom-2 right-2"><Pill bg="#2b2b2b" fg="#fff">{t("soldOut")}</Pill></div>}
         </div>
-      </div>
-    </div>
+        <div className="p-3 flex flex-col flex-1">
+          <div className="font-extrabold leading-snug" style={{ color: P.txt }}>{pickL(item.name, lang)}</div>
+          <div className="text-xs mt-1 flex-1" style={{ color: P.sub }}>{pickL(item.desc, lang)}</div>
+          {hasSizes && (
+            <div className="flex gap-1.5 mt-2">
+              {item.sizes.map((s, i) => (
+                <motion.button key={s.label} type="button" onClick={() => setSizeIdx(i)} whileTap={{ scale: 0.96 }}
+                  className="text-xs font-bold px-2.5 py-1 rounded-full"
+                  animate={{ backgroundColor: sizeIdx === i ? P.ink : P.bone, color: sizeIdx === i ? "#fff" : P.txt, borderColor: sizeIdx === i ? P.ink : P.line }}
+                  transition={{ duration: MOTION.duration.micro }}
+                  style={{ border: "1px solid" }}>
+                  {s.label}
+                </motion.button>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center justify-between mt-3">
+            <div className="font-extrabold" style={{ color: P.txt }}>{item.priceMax ? `${activePrice.toLocaleString("ru-RU")} – ${fmt(item.priceMax)}` : fmt(activePrice)}</div>
+            {off ? (
+              <span className="text-xs font-bold" style={{ color: P.sub }}>—</span>
+            ) : qty > 0 ? (
+              <QtyControl qty={qty} onMinus={onMinus} onPlus={onPlus} plusDim={isClosed} />
+            ) : (
+              <motion.button onClick={onPlus} whileTap={{ scale: 0.94 }} className="text-sm font-bold px-3 py-1.5 rounded-full"
+                transition={{ duration: MOTION.duration.micro }}
+                style={{ background: isClosed ? P.sub : P.ink, color: "#fff", cursor: isClosed ? "not-allowed" : "pointer" }}>{t("add")} +</motion.button>
+            )}
+          </div>
+        </div>
+      </motion.article>
+    </motion.div>
   );
 }
 
@@ -1518,6 +1609,7 @@ function OrdersBoard({ open, onClose, orders, lang, t, refreshOrders }) {
 function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, lastOrder, orders, refreshOrders, resetAfterOrder, booking, clearBooking, kaspiUrl, isClosed, openPrivacy, cafeInfo }) {
   const [step, setStep] = useState("cart");
   const [type, setType] = useState("table");
+  const reducedMotion = useReducedMotion();
   const turnstileRef = React.useRef(null);
   const turnstileWidgetId = React.useRef(null);
   const [table, setTable] = useState("");
@@ -1791,19 +1883,37 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
     setStep("done");
   };
 
-  if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-label={t("cart")}>
-      <div className="absolute inset-0" style={{ background: "rgba(14,22,32,.55)" }} onClick={onClose} />
-      <div className="absolute right-0 top-0 h-full w-full sm:w-[420px] flex flex-col" style={{ background: P.bone }}>
+    <AnimatePresence>
+      {open && (
+    <motion.div className="fixed inset-0 z-50" role="dialog" aria-label={t("cart")}
+      initial="closed" animate="open" exit="closed">
+      <motion.div className="absolute inset-0"
+        variants={{ closed: { opacity: 0 }, open: { opacity: 1 } }}
+        transition={{ duration: reducedMotion ? 0.12 : 0.22 }}
+        style={{ background: "rgba(14,22,32,.55)" }} onClick={onClose} />
+      <motion.div className="absolute right-0 top-0 h-full w-full sm:w-[420px] flex flex-col"
+        variants={{
+          closed: reducedMotion ? { opacity: 0 } : { x: "100%" },
+          open: reducedMotion ? { opacity: 1 } : { x: 0 },
+        }}
+        transition={{ duration: reducedMotion ? 0.14 : MOTION.duration.component, ease: MOTION.ease.enter }}
+        style={{ background: P.bone }}>
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${P.line}` }}>
           <div className="font-extrabold text-lg" style={{ fontFamily: FONT_DISPLAY, color: P.txt }}>
             {step === "done" ? t("placed") : step === "checkout" ? t("checkout") : t("cart")}
           </div>
-          <button onClick={onClose} aria-label="close" className="w-9 h-9 rounded-full font-bold" style={{ background: P.card, border: `1px solid ${P.line}` }}>✕</button>
+          <motion.button whileTap={{ scale: 0.9 }} onClick={onClose} aria-label="close" className="w-9 h-9 rounded-full font-bold"
+            style={{ background: P.card, border: `1px solid ${P.line}` }}>✕</motion.button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div key={step}
+              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, x: -8 }}
+              transition={{ duration: reducedMotion ? 0.12 : 0.24, ease: MOTION.ease.enter }}>
           {step === "cart" && (entries.length === 0 ? (
             <div className="text-center mt-16">
               <div className="font-extrabold mt-2" style={{ color: P.txt }}>{t("cartEmpty")}</div>
@@ -1960,7 +2070,13 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
               <Field label={t("comment")} value={comment} onChange={setComment} ph={t("commentPh")} area />
               {/* Turnstile widget — rendered explicitly via useEffect above */}
               <div ref={turnstileRef} />
-              {err && <div className="text-sm font-bold rounded-lg px-3 py-2" style={{ background: "#FAE5E3", color: "#933A34" }}>{err}</div>}
+              <AnimatePresence>
+                {err && (
+                  <motion.div role="alert" initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                    transition={{ duration: reducedMotion ? 0.12 : MOTION.duration.micro }}
+                    className="text-sm font-bold rounded-lg px-3 py-2" style={{ background: "#FAE5E3", color: "#933A34" }}>{err}</motion.div>
+                )}
+              </AnimatePresence>
               <div className="rounded-xl p-3 text-sm" style={{ background: P.card, border: `1px solid ${P.line}` }}>
                 {entries.map(({ cartId, item, price, sizeLabel, q }) => (
                   <div key={cartId} className="flex justify-between py-0.5">
@@ -2058,6 +2174,8 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
               </div>
             </div>
           )}
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         {step !== "done" && (entries.length > 0 || (booking && step === "checkout")) && (
@@ -2101,11 +2219,15 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                     {(T[lang] && T[lang].consentSuffix) || ""}
                   </span>
                 </label>
+                <AnimatePresence>
                 {consentError && (
-                  <div className="text-xs font-bold rounded-lg px-3 py-2" style={{ background: "#FAE5E3", color: "#933A34" }}>
+                  <motion.div role="alert" initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                    transition={{ duration: reducedMotion ? 0.12 : MOTION.duration.micro }}
+                    className="text-xs font-bold rounded-lg px-3 py-2" style={{ background: "#FAE5E3", color: "#933A34" }}>
                     {t("consentNeed")}
-                  </div>
+                  </motion.div>
                 )}
+                </AnimatePresence>
                 {(!booking || entries.length > 0) && (
                   <button onClick={returnToCart} className="w-full py-2.5 rounded-xl font-bold" style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt }}>
                     ← {t("back")}
@@ -2127,8 +2249,10 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
             )}
           </div>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -2412,6 +2536,22 @@ function BookingWizard({ open, onClose, lang, t, onProceed, cafeInfo }) {
 function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, cartTotal, goAdmin, lastOrder, orders, openBoard, openPrivacy, cafeInfo }) {
   const [activeCat, setActiveCat] = useState("all");
   const [q, setQ] = useState("");
+  const reducedMotion = useReducedMotion();
+  const heroRef = React.useRef(null);
+  const cartTargetRef = React.useRef(null);
+  const cartControls = useAnimationControls();
+  const ambientActive = useAmbientVisibility(heroRef);
+  const onCartArrive = useCallback(() => {
+    cartControls.start(reducedMotion
+      ? { opacity: [1, 0.72, 1], transition: { duration: 0.16 } }
+      : { scale: [1, 1.04, 1], transition: { duration: 0.3, ease: MOTION.ease.enter } });
+  }, [cartControls, reducedMotion]);
+  const runCartFlight = useCartFlight({
+    targetRef: cartTargetRef,
+    reducedMotion,
+    onArrive: onCartArrive,
+  });
+  const sectionChildMotion = reducedMotion ? reducedSectionVariants : sectionChildVariants;
   const catList = useMemo(() => orderedCats(menu), [menu]);
 
   const filtered = useMemo(() => menu.filter((m) => {
@@ -2445,7 +2585,11 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
 
       {/* header — offset below the closed banner so the banner never covers
           the brand lockup (both are pinned to the top of the viewport) */}
-      <header className="sticky z-40" style={{ top: isClosed ? CLOSED_BANNER_H : 0, background: "rgba(250,245,236,.92)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${P.line}` }}>
+      <motion.header className="sticky z-40"
+        initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: reducedMotion ? 0.14 : 0.45, ease: MOTION.ease.enter }}
+        style={{ top: isClosed ? CLOSED_BANNER_H : 0, background: "rgba(250,245,236,.92)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${P.line}` }}>
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
           <a href="#top" className="flex items-center no-underline" style={{ color: P.txt }}>
             <Logo h={40} responsive />
@@ -2455,21 +2599,30 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
             <a href="#contacts" style={{ color: P.sub }} className="no-underline hover:opacity-70">{t("contacts")}</a>
           </nav>
           <div className="ml-auto flex items-center gap-2">
-            <button onClick={() => setLang(nextLang(lang))} className="text-xs font-extrabold px-3 py-1.5 rounded-full"
+            <motion.button whileTap={{ scale: 0.95 }} onClick={() => setLang(nextLang(lang))} className="text-xs font-extrabold px-3 py-1.5 rounded-full"
               style={{ background: P.card, border: `1px solid ${P.line}` }}>
               {langCode(lang)}
-            </button>
-            <button onClick={openCart} className="flex items-center gap-2 text-sm font-extrabold px-4 py-2 rounded-full" style={{ background: P.ink, color: "#fff" }}>
+            </motion.button>
+            <motion.button ref={cartTargetRef} data-cart-target="true" animate={cartControls} whileTap={{ scale: 0.96 }} onClick={openCart}
+              className="flex items-center gap-2 text-sm font-extrabold px-4 py-2 rounded-full" style={{ background: P.ink, color: "#fff" }}>
               {cartCount > 0 ? fmt(cartTotal) : t("cart")}
-              {cartCount > 0 && <span className="text-xs px-1.5 rounded-full" style={{ background: P.teal }}>{cartCount}</span>}
-            </button>
-            <button onClick={openBoard} className="flex items-center gap-2 text-sm font-extrabold px-4 py-2 rounded-full"
+              <AnimatePresence mode="popLayout" initial={false}>
+                {cartCount > 0 && (
+                  <motion.span key={cartCount}
+                    initial={reducedMotion ? { opacity: 0.72 } : { scale: 1 }}
+                    animate={reducedMotion ? { opacity: 1 } : { scale: [1, 1.22, 1] }}
+                    transition={reducedMotion ? { duration: 0.16 } : MOTION.spring.badge}
+                    className="text-xs px-1.5 rounded-full" style={{ background: P.teal }}>{cartCount}</motion.span>
+                )}
+              </AnimatePresence>
+            </motion.button>
+            <motion.button whileTap={{ scale: 0.96 }} onClick={openBoard} className="flex items-center gap-2 text-sm font-extrabold px-4 py-2 rounded-full"
               style={{ background: P.teal, color: "#fff", boxShadow: "0 2px 12px rgba(116,36,39,.35)" }}>
               {t("allOrders")}
-            </button>
+            </motion.button>
           </div>
         </div>
-      </header>
+      </motion.header>
 
       {/* hero — the seal's own palette: a deep burgundy stage that fades into
           the feast photograph on the right, brass laurel sprigs echoing the
@@ -2477,7 +2630,7 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
           concentric rings. The photo already ships with a dark burgundy
           gradient baked into its left edge, so the mask blends seamlessly.
           If the image is missing it hides itself and the gradient carries. */}
-      <section id="top" className="relative overflow-hidden" style={{ background: "linear-gradient(105deg, #1A1011 0%, #401113 46%, #742427 100%)" }}>
+      <section ref={heroRef} id="top" className="relative overflow-hidden" style={{ background: "linear-gradient(105deg, #1A1011 0%, #401113 46%, #742427 100%)" }}>
         {/* soft brass glow so the burgundy reads rich, not flat */}
         <div className="absolute inset-0 pointer-events-none"
           style={{ background: "radial-gradient(ellipse 62% 78% at 34% 40%, rgba(201,154,90,.16), rgba(201,154,90,0) 64%)" }} />
@@ -2486,80 +2639,119 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
         <div className="absolute rounded-full pointer-events-none" style={{ width: 430, height: 430, right: "43%", top: -300, border: "1.5px solid rgba(201,154,90,.16)" }} />
         <div className="absolute rounded-full pointer-events-none" style={{ width: 420, height: 420, right: "23%", bottom: -310, border: "1.5px solid rgba(250,245,236,.08)" }} />
         {/* brass laurel sprigs from the wreath in the seal */}
-        <LaurelSprig size={104} rotate={-18} opacity={0.3} style={{ left: -22, bottom: 40 }} />
-        <LaurelSprig size={54} rotate={132} opacity={0.34} style={{ left: 74, bottom: 78 }} />
-        <LaurelSprig size={44} rotate={-140} opacity={0.28} style={{ right: "45%", top: 34 }} />
-        <LaurelSprig size={40} rotate={64} opacity={0.24} style={{ right: "7%", top: 46 }} />
+        <AnimatedLaurel size={104} rotate={-18} opacity={0.3} style={{ left: -22, bottom: 40 }}
+          drift="a" delay={0.36} reducedMotion={reducedMotion} ambientActive={ambientActive} />
+        <AnimatedLaurel size={54} rotate={132} opacity={0.34} style={{ left: 74, bottom: 78 }}
+          drift="b" delay={0.42} reducedMotion={reducedMotion} ambientActive={ambientActive} />
+        <AnimatedLaurel size={44} rotate={-140} opacity={0.28} style={{ right: "45%", top: 34 }}
+          drift="a" delay={0.48} reducedMotion={reducedMotion} ambientActive={ambientActive} />
+        <AnimatedLaurel size={40} rotate={64} opacity={0.24} style={{ right: "7%", top: 46 }}
+          drift="b" delay={0.54} reducedMotion={reducedMotion} ambientActive={ambientActive} />
         {/* the feast photograph, faded into the burgundy stage */}
-        <div className="hidden sm:block absolute pointer-events-none select-none"
+        <motion.div className="hidden sm:block absolute pointer-events-none select-none"
+          initial={reducedMotion ? { opacity: 0 } : { opacity: 0, x: 24, scale: 1.035 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          transition={{ duration: reducedMotion ? 0.14 : 1, delay: reducedMotion ? 0 : 0.1, ease: MOTION.ease.enter }}
           style={{ right: 0, top: 0, bottom: 0, width: "61%", maxWidth: 900, zIndex: 1 }}>
           <img src={HERO_IMAGE} alt="" aria-hidden="true"
             onError={(e) => { e.currentTarget.style.display = "none"; }}
-            className="absolute inset-0 pointer-events-none select-none"
+            className={`absolute inset-0 pointer-events-none select-none yusup-hero-photo ${ambientActive ? "" : "yusup-ambient-paused"}`}
             style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "right center", WebkitMaskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,.7) 13%, #000 30%, #000 100%)", maskImage: "linear-gradient(90deg, transparent 0%, rgba(0,0,0,.7) 13%, #000 30%, #000 100%)" }} />
-        </div>
+        </motion.div>
         <div className="relative max-w-5xl mx-auto px-4 pt-10 pb-9 sm:py-12" style={{ zIndex: 2 }}>
           <div className="max-w-2xl sm:max-w-[56%]">
-            <div className="flex items-center gap-3 mb-4">
+            <motion.div className="flex items-center gap-3 mb-4"
+              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reducedMotion ? 0.14 : 0.5, delay: reducedMotion ? 0 : 0.12, ease: MOTION.ease.enter }}>
               <Logo h={34} tone="light" wordmark={false} />
               <span className="text-xs font-extrabold tracking-widest uppercase" style={{ color: P.saff }}>{L3(lang, "Halal kitchen", "Халяльная кухня", "Халал ас")}</span>
-            </div>
-            <h1 className="leading-snug max-w-xl" style={{ fontFamily: FONT_DISPLAY, color: "#fff", fontSize: "clamp(23px,3.4vw,38px)", fontWeight: 700, letterSpacing: "-.01em" }}>
+            </motion.div>
+            <motion.h1 className="leading-snug max-w-xl"
+              initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reducedMotion ? 0.14 : 0.7, delay: reducedMotion ? 0 : 0.18, ease: MOTION.ease.enter }}
+              style={{ fontFamily: FONT_DISPLAY, color: "#fff", fontSize: "clamp(23px,3.4vw,38px)", fontWeight: 700, letterSpacing: "-.01em" }}>
               {t("tagline")}
-            </h1>
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <a href="#menu" className="no-underline font-extrabold text-sm px-5 py-3 rounded-full" style={{ background: P.saff, color: P.txt, boxShadow: "0 12px 28px rgba(0,0,0,.32)" }}>
+            </motion.h1>
+            <motion.div className="mt-6 flex flex-wrap items-center gap-3"
+              initial="hidden" animate="visible"
+              variants={{ visible: { transition: { delayChildren: reducedMotion ? 0 : 0.48, staggerChildren: reducedMotion ? 0 : 0.07 } } }}>
+              <motion.a href="#menu" whileTap={{ scale: 0.97 }}
+                variants={{ hidden: reducedMotion ? { opacity: 0 } : { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: reducedMotion ? 0.14 : 0.52, ease: MOTION.ease.enter } } }}
+                className="no-underline font-extrabold text-sm px-5 py-3 rounded-full" style={{ background: P.saff, color: P.txt, boxShadow: "0 12px 28px rgba(0,0,0,.32)" }}>
                 {t("seeMenu")} ↓
-              </a>
-              <a href="tel:+77753798243" className="no-underline font-extrabold text-sm px-5 py-3 rounded-full"
+              </motion.a>
+              <motion.a href="tel:+77753798243" whileTap={{ scale: 0.97 }}
+                variants={{ hidden: reducedMotion ? { opacity: 0 } : { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: reducedMotion ? 0.14 : 0.52, ease: MOTION.ease.enter } } }}
+                className="no-underline font-extrabold text-sm px-5 py-3 rounded-full"
                 style={{ background: "rgba(250,245,236,.12)", color: "#fff", border: "1px solid rgba(250,245,236,.3)", backdropFilter: "blur(4px)" }}>
                 {L3(lang, "Book", "Забронировать", "Брондау")}
-              </a>
-              <span className="text-xs font-bold px-3 py-2 rounded-full" style={{ background: "rgba(26,16,17,.55)", color: "#fff", border: "1px solid rgba(250,245,236,.14)" }}>
+              </motion.a>
+              <motion.span
+                variants={{ hidden: reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }, visible: { opacity: 1, scale: 1, transition: { duration: reducedMotion ? 0.14 : 0.44, ease: MOTION.ease.enter } } }}
+                className="text-xs font-bold px-3 py-2 rounded-full" style={{ background: "rgba(26,16,17,.55)", color: "#fff", border: "1px solid rgba(250,245,236,.14)" }}>
                 <span style={{ color: "#7FBF63" }}>●</span> {t("today")} {t("until")} 01:00
-              </span>
-            </div>
+              </motion.span>
+            </motion.div>
           </div>
           {/* the feast photograph — mobile: below the text, faded top and bottom */}
-          <div className="sm:hidden relative pointer-events-none select-none -mx-5 mt-5 mb-[-2px] overflow-hidden"
+          <motion.div className="sm:hidden relative pointer-events-none select-none -mx-5 mt-5 mb-[-2px] overflow-hidden"
+            initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 16, scale: 1.025 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: reducedMotion ? 0.14 : 0.78, delay: reducedMotion ? 0 : 0.28, ease: MOTION.ease.enter }}
             style={{ height: "min(62vw, 318px)" }}>
             <img src={HERO_IMAGE} alt="" aria-hidden="true"
               onError={(e) => { e.currentTarget.style.display = "none"; }}
-              className="absolute inset-0 pointer-events-none select-none"
+              className={`absolute inset-0 pointer-events-none select-none yusup-hero-photo ${ambientActive ? "" : "yusup-ambient-paused"}`}
               style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "right center", WebkitMaskImage: "linear-gradient(180deg, transparent 0%, rgba(0,0,0,.8) 11%, #000 25%, #000 88%, transparent 100%)", maskImage: "linear-gradient(180deg, transparent 0%, rgba(0,0,0,.8) 11%, #000 25%, #000 88%, transparent 100%)" }} />
-          </div>
+          </motion.div>
         </div>
       </section>
 
       {/* menu */}
-      <section id="menu" className="max-w-5xl mx-auto px-4 py-10">
-        <div className="flex items-end justify-between gap-4 flex-wrap mb-5">
+      <motion.section id="menu" className="max-w-5xl mx-auto px-4 py-10 scroll-mt-20"
+        initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.04 }}
+        variants={reducedMotion ? reducedSectionVariants : sectionVariants}>
+        <motion.div variants={sectionChildMotion} className="flex items-end justify-between gap-4 flex-wrap mb-5">
           <h2 style={{ fontFamily: FONT_DISPLAY, fontSize: 24, fontWeight: 700 }}>{t("menu")}</h2>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("search")}
             className="rounded-full px-4 py-2 text-sm outline-none w-full sm:w-64"
             style={{ background: P.card, border: `1px solid ${P.line}` }} />
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-5">
+        </motion.div>
+        <motion.div variants={sectionChildMotion} className="flex gap-2 overflow-x-auto pb-2 mb-5">
           {[{ id: "all", en: t("all"), ru: t("all") }, ...catList].map((c) => (
-            <button key={c.id} onClick={() => setActiveCat(c.id)} className="whitespace-nowrap text-sm font-bold px-4 py-2 rounded-full"
-              style={{ background: activeCat === c.id ? P.ink : P.card, color: activeCat === c.id ? "#fff" : P.txt, border: `1px solid ${activeCat === c.id ? P.ink : P.line}` }}>
+            <motion.button key={c.id} onClick={() => setActiveCat(c.id)} whileTap={{ scale: 0.97 }}
+              className="whitespace-nowrap text-sm font-bold px-4 py-2 rounded-full"
+              animate={{ backgroundColor: activeCat === c.id ? P.ink : P.card, color: activeCat === c.id ? "#fff" : P.txt, borderColor: activeCat === c.id ? P.ink : P.line }}
+              transition={{ duration: reducedMotion ? 0.01 : MOTION.duration.micro }}
+              style={{ border: "1px solid" }}>
               {c[lang] || c.en}
-            </button>
+            </motion.button>
           ))}
-        </div>
-        <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {filtered.map((item) => (
-              <DishCard key={item.id} item={item} lang={lang} t={t}
-              image={item.image || GALLERY_MENU_IMAGES[item.id]} cart={cart} setQty={setQty} isClosed={isClosed} />
-          ))}
-          {filtered.length === 0 && (
-            <div className="col-span-full text-center py-12" style={{ color: P.sub }}>{L3(lang, "Nothing found", "Ничего не найдено", "Ештеңе табылмады")}</div>
-          )}
-        </div>
-      </section>
+        </motion.div>
+        <LayoutGroup id="guest-menu">
+          <motion.div variants={sectionChildMotion} className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <AnimatePresence mode="popLayout" initial={false}>
+              {filtered.map((item, index) => (
+                <DishCard key={item.id} item={item} lang={lang} t={t} index={index}
+                  image={item.image || GALLERY_MENU_IMAGES[item.id]} cart={cart} setQty={setQty} isClosed={isClosed}
+                  onAddFlight={runCartFlight} reducedMotion={reducedMotion} />
+              ))}
+              {filtered.length === 0 && (
+                <motion.div key="empty-menu" layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="col-span-full text-center py-12" style={{ color: P.sub }}>
+                  {L3(lang, "Nothing found", "Ничего не найдено", "Ештеңе табылмады")}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        </LayoutGroup>
+      </motion.section>
 
       {/* contacts / footer */}
-      <footer id="contacts" style={{ background: P.ink }}>
+      <motion.footer id="contacts" initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.2 }}
+        variants={reducedMotion ? reducedSectionVariants : sectionVariants} style={{ background: P.ink }}>
         <div className="max-w-5xl mx-auto px-4 py-10 grid sm:grid-cols-3 gap-8">
           <div>
             <Logo h={52} tone="light" />
@@ -2581,27 +2773,39 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
             </button>
           </div>
         </div>
-      </footer>
+      </motion.footer>
 
       {/* active order pill */}
-      {activeLive && (
-        <button onClick={openCart} className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full shadow-lg font-bold text-sm"
-          style={{ background: P.ink, color: "#fff" }}>
-          {t("activeOrder")} №{activeLive.num} · <StatusPill s={activeLive.status} lang={lang} />
-        </button>
-      )}
+      <AnimatePresence>
+        {activeLive && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40">
+            <motion.button whileTap={{ scale: 0.97 }} onClick={openCart}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-full shadow-lg font-bold text-sm"
+              style={{ background: P.ink, color: "#fff" }}>
+              {t("activeOrder")} №{activeLive.num} · <StatusPill s={activeLive.status} lang={lang} />
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* cart nudge pill — appears when items added but no active order */}
-      {cartCount > 0 && !activeLive && (
-        <button onClick={openCart} className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-5 py-3 rounded-full font-bold text-sm"
-          style={{ background: P.teal, color: "#fff", boxShadow: "0 4px 24px rgba(116,36,39,.45)" }}>
-          <span>{fmt(cartTotal)}</span>
-          <span style={{ opacity: 0.85, fontWeight: 400 }}>·</span>
-          <span style={{ opacity: 0.85, fontWeight: 400 }}>
-            {lang === "en" ? "Tap to order →" : "Нажмите для заказа →"}
-          </span>
-        </button>
-      )}
+      <AnimatePresence>
+        {cartCount > 0 && !activeLive && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40">
+            <motion.button whileTap={{ scale: 0.97 }} onClick={openCart}
+              className="flex items-center gap-3 px-5 py-3 rounded-full font-bold text-sm"
+              style={{ background: P.teal, color: "#fff", boxShadow: "0 4px 24px rgba(116,36,39,.45)" }}>
+              <span>{fmt(cartTotal)}</span>
+              <span style={{ opacity: 0.85, fontWeight: 400 }}>·</span>
+              <span style={{ opacity: 0.85, fontWeight: 400 }}>
+                {lang === "en" ? "Tap to order →" : "Нажмите для заказа →"}
+              </span>
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
