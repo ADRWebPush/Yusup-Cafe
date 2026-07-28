@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { salesTotalsForPeriods } from "./adminAnalytics.js";
 
 /* ───────────────────────── Yusup Cafe ─────────────────────────
    Guest site + Admin panel in one app.
@@ -550,11 +551,10 @@ const fmt = (n) => n.toLocaleString("ru-RU") + " ₸";
 const SERVICE_FEE_RATE = 0; // "Обслуживание 0%" per the Yusup Cafe menu board
 const serviceFeeOf = (subtotal) => Math.round(subtotal * SERVICE_FEE_RATE);
 
-// Delivery pricing: three concentric zones around the restaurant; the fee is
-// decided by which ring the client's map pin falls in, and outside the last
-// ring delivery is refused. Radii are staff-editable (admin → График) and
-// live in cafe settings; these defaults apply until first saved. The backend
-// re-computes the fee on every order, so this mirror is display-only.
+// Delivery pricing: concentric zones around the restaurant. Staff may edit
+// both radius and price or add more zones. The backend re-computes the fee
+// on every order, so this mirror is display-only.
+const MAX_DELIVERY_ZONES = 8;
 const DELIVERY_DEFAULTS = {
   // Yusup Cafe — Сайрам (the physical restaurant), from the owner's 2GIS pin
   // https://2gis.ru/geo/69.825314,42.434279 (2GIS gives lng,lat). The ring
@@ -565,18 +565,29 @@ const DELIVERY_DEFAULTS = {
 };
 const deliveryCfgOf = (cafeInfo) => {
   const d = (cafeInfo && cafeInfo.delivery) || {};
-  const zones = Array.isArray(d.zones) && d.zones.length === 3
-    ? d.zones.map((z, i) => ({
-        km: Number(z && z.km) > 0 ? Number(z.km) : DELIVERY_DEFAULTS.zones[i].km,
-        fee: Number(z && z.fee) >= 0 ? Math.round(Number(z.fee)) : DELIVERY_DEFAULTS.zones[i].fee,
+  const candidate = Array.isArray(d.zones) && d.zones.length >= 1
+    && d.zones.length <= MAX_DELIVERY_ZONES
+    ? d.zones.map((z) => ({
+        km: Number(z && z.km),
+        fee: Number(z && z.fee),
       }))
-    : DELIVERY_DEFAULTS.zones;
+    : [];
+  const valid = candidate.length > 0
+    && candidate.every((z) => Number.isFinite(z.km) && z.km > 0 && z.km <= 100
+      && Number.isInteger(z.fee) && z.fee >= 0 && z.fee <= 100000)
+    && candidate.every((z, i) => i === 0 || candidate[i - 1].km < z.km);
+  const zones = valid ? candidate : DELIVERY_DEFAULTS.zones.map((z) => ({ ...z }));
   // Centre is always the code constant — staff edit radii, never the centre.
   return {
     lat: DELIVERY_DEFAULTS.lat,
     lng: DELIVERY_DEFAULTS.lng,
     zones,
   };
+};
+const deliveryZoneColor = (index, count) => {
+  const ratio = count <= 1 ? 0 : index / (count - 1);
+  const hue = Math.round(120 - ratio * 112);
+  return `hsl(${hue} 58% 43%)`;
 };
 const distKm = (lat1, lng1, lat2, lng2) => {
   const R = 6371, rad = (x) => (x * Math.PI) / 180;
@@ -592,7 +603,28 @@ const deliveryFeeFor = (cfg, lat, lng) => {
 };
 const timeOf = (ts) => new Date(ts).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 const dateOf = (ts) => new Date(ts).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
-const isToday = (ts) => new Date(ts).toDateString() === new Date().toDateString();
+const EMPTY_SALES_HISTORY = Object.freeze({ weeks: [], months: [], years: [] });
+const salesHistoryPeriodLabel = (item, period, lang) => {
+  const start = new Date(Number(item && item.start));
+  if (!Number.isFinite(start.getTime())) return (item && item.key) || "-";
+  const locale = lang === "en" ? "en-GB" : "ru-RU";
+  if (period === "years") return (item && item.key) || "-";
+  if (period === "months") {
+    return new Intl.DateTimeFormat(locale, {
+      month: "long",
+      year: "numeric",
+      timeZone: "Asia/Almaty",
+    }).format(start);
+  }
+  const end = new Date(Number(item.end) - 1);
+  const format = new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Almaty",
+  });
+  return `${format.format(start)} - ${format.format(end)}`;
+};
 
 // language cycle: Russian → Kazakh → English → Russian …
 const LANGS = ["ru", "kz", "en"];
@@ -782,6 +814,41 @@ async function apiConfirmPayment(id) {
 async function apiGetLedger() {
   try { const r = await fetch(`${API}/api/ledger`, { headers: authHeaders() }); return r.ok ? await r.json() : null; }
   catch (e) { return null; }
+}
+async function apiGetSalesHistory() {
+  try {
+    const r = await fetch(`${API}/api/admin/sales-history`, {
+      headers: authHeaders(),
+      cache: "no-store",
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return data && ["weeks", "months", "years"].every((key) => Array.isArray(data[key]))
+      ? data
+      : null;
+  } catch (e) { return null; }
+}
+async function apiGetAdminTables() {
+  try {
+    const r = await fetch(`${API}/api/admin/tables`, {
+      headers: authHeaders(),
+      cache: "no-store",
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    return data && Array.isArray(data.tables) ? data : null;
+  } catch (e) { return null; }
+}
+async function apiSetAdminTableOccupied(number, occupied) {
+  try {
+    const r = await fetch(`${API}/api/admin/tables/${number}`, {
+      method: "PUT",
+      headers: authHeaders(),
+      body: JSON.stringify({ occupied }),
+    });
+    if (r.status === 401) return "auth";
+    return r.ok;
+  } catch (e) { return false; }
 }
 async function apiSettleLedger(note) {
   try { const r = await fetch(`${API}/api/ledger/settle`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ note }) }); return r.ok ? await r.json() : null; }
@@ -1080,11 +1147,12 @@ function MapPicker({ open, onClose, onPick, lang, t, initial, deliveryCfg }) {
     L.control.attribution({ prefix: false }).addAttribution("© OpenStreetMap").addTo(map);
     // Fee zones as concentric rings around the restaurant (largest first so
     // the inner ones stay clickable/visible), plus the restaurant itself.
-    const ringColors = ["#B23A2F", "#C99A5A", "#5C8544"]; // outer → inner
-    [...cfg.zones].sort((a, b) => b.km - a.km).forEach((z, i) => {
+    const sortedZones = [...cfg.zones].sort((a, b) => b.km - a.km);
+    sortedZones.forEach((z, i) => {
+      const color = deliveryZoneColor(sortedZones.length - i - 1, sortedZones.length);
       L.circle([cfg.lat, cfg.lng], {
-        radius: z.km * 1000, color: ringColors[i] || "#5C8544", weight: 1.5,
-        fillColor: ringColors[i] || "#5C8544", fillOpacity: 0.08, interactive: false,
+        radius: z.km * 1000, color, weight: 1.5,
+        fillColor: color, fillOpacity: 0.08, interactive: false,
       }).addTo(map);
     });
     L.circleMarker([cfg.lat, cfg.lng], {
@@ -1793,7 +1861,7 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                 <div>
                   <div className="text-sm font-bold mb-1.5" style={{ color: P.txt }}>{t("tableNo")}</div>
                   <div className="grid grid-cols-5 gap-2">
-                    {Array.from({ length: 15 }, (_, i) => String(i + 1)).map((n) => {
+                    {Array.from({ length: 30 }, (_, i) => String(i + 1)).map((n) => {
                       const on = table === n;
                       return (
                         <button key={n} type="button" onClick={() => setTable(n)}
@@ -2341,7 +2409,7 @@ function BookingWizard({ open, onClose, lang, t, onProceed, cafeInfo }) {
 
 /* ── guest site ──────────────────────────────────────────────────────── */
 
-function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, cartTotal, goAdmin, lastOrder, orders, openBooking, openBoard, openPrivacy, cafeInfo }) {
+function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, cartTotal, goAdmin, lastOrder, orders, openBoard, openPrivacy, cafeInfo }) {
   const [activeCat, setActiveCat] = useState("all");
   const [q, setQ] = useState("");
   const catList = useMemo(() => orderedCats(menu), [menu]);
@@ -2443,9 +2511,10 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
               <a href="#menu" className="no-underline font-extrabold text-sm px-5 py-3 rounded-full" style={{ background: P.saff, color: P.txt, boxShadow: "0 12px 28px rgba(0,0,0,.32)" }}>
                 {t("seeMenu")} ↓
               </a>
-              <button onClick={openBooking} className="font-extrabold text-sm px-5 py-3 rounded-full" style={{ background: "rgba(250,245,236,.12)", color: "#fff", border: "1px solid rgba(250,245,236,.3)", backdropFilter: "blur(4px)" }}>
-                {t("book")}
-              </button>
+              <a href="tel:+77753798243" className="no-underline font-extrabold text-sm px-5 py-3 rounded-full"
+                style={{ background: "rgba(250,245,236,.12)", color: "#fff", border: "1px solid rgba(250,245,236,.3)", backdropFilter: "blur(4px)" }}>
+                {L3(lang, "Call to order", "Позвонить для заказа", "Тапсырыс беру үшін қоңырау")}
+              </a>
               <span className="text-xs font-bold px-3 py-2 rounded-full" style={{ background: "rgba(26,16,17,.55)", color: "#fff", border: "1px solid rgba(250,245,236,.14)" }}>
                 <span style={{ color: "#7FBF63" }}>●</span> {t("today")} {t("until")} 01:00
               </span>
@@ -3024,6 +3093,112 @@ function OrderItemEditor({ order, menu, lang, onClose, onSave }) {
     </div>
   );
 }
+
+function TableBusyEditor({ lang }) {
+  const [tables, setTables] = useState(() => Array.from(
+    { length: 30 },
+    (_, index) => ({ number: index + 1, occupied: false }),
+  ));
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [saving, setSaving] = useState(null);
+
+  const load = useCallback(async () => {
+    const data = await apiGetAdminTables();
+    if (data) {
+      setTables(data.tables);
+      setFailed(false);
+    } else {
+      setFailed(true);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    load();
+    const timer = setInterval(load, 20000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  const toggle = async (table) => {
+    if (saving !== null) return;
+    setSaving(table.number);
+    const result = await apiSetAdminTableOccupied(table.number, !table.occupied);
+    setSaving(null);
+    if (result === "auth") {
+      localStorage.removeItem("aspan-token");
+      window.location.reload();
+      return;
+    }
+    if (result !== true) {
+      alert(L3(
+        lang,
+        "Could not update the table. Try again.",
+        "Не удалось обновить столик. Попробуйте ещё раз.",
+        "Үстелді жаңарту мүмкін болмады. Қайталап көріңіз.",
+      ));
+      return;
+    }
+    setTables((current) => current.map((item) => (
+      item.number === table.number
+        ? { ...item, occupied: !item.occupied }
+        : item
+    )));
+  };
+
+  return (
+    <section className="p-4 sm:p-5 rounded-2xl" style={{
+      background: P.ink,
+      border: "1px solid rgba(255,255,255,.10)",
+      boxShadow: "0 14px 36px rgba(26,16,17,.16)",
+    }}>
+      <h2 className="font-extrabold mb-1" style={{ color: "#fff", fontSize: 18 }}>
+        {L3(lang, "Table occupancy", "Занятость столиков", "Үстелдердің бос емес күйі")}
+      </h2>
+      <p className="text-xs sm:text-sm mb-4" style={{ color: "rgba(255,255,255,.72)" }}>
+        {L3(
+          lang,
+          "Mark a table occupied when guests sit down. Tap it again when the table is free. Marks clear automatically after 14 hours.",
+          "Отмечайте столик занятым, когда гости сели. Нажмите ещё раз, когда столик освободится. Отметки снимаются автоматически через 14 часов.",
+          "Қонақтар отырғанда үстелді бос емес деп белгілеңіз. Босағанда қайта басыңыз. Белгілер 14 сағаттан кейін автоматты түрде алынады.",
+        )}
+      </p>
+      {loading && <div className="text-sm" style={{ color: "rgba(255,255,255,.72)" }}>...</div>}
+      {failed && !loading && (
+        <div role="alert" className="text-sm font-bold mb-3" style={{ color: "#FFB4AC" }}>
+          {L3(lang, "Could not load tables.", "Не удалось загрузить столики.", "Үстелдерді жүктеу мүмкін болмады.")}
+        </div>
+      )}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        {tables.map((table) => (
+          <button key={table.number} type="button" onClick={() => toggle(table)}
+            disabled={loading || failed || saving !== null}
+            aria-pressed={table.occupied}
+            className="py-2.5 font-extrabold text-sm flex flex-col items-center leading-tight rounded-xl"
+            style={{
+              minHeight: 58,
+              background: table.occupied ? P.red : "#343A42",
+              color: "#fff",
+              border: table.occupied
+                ? "1px solid #E08C77"
+                : "1px solid rgba(255,255,255,.18)",
+              opacity: loading || failed || saving === table.number ? 0.58 : 1,
+            }}>
+            <span style={{ fontSize: 18 }}>{table.number}</span>
+            <span style={{ fontSize: 10 }}>
+              {loading || failed
+                ? "..."
+                : table.occupied
+                ? L3(lang, "occupied", "занят", "бос емес")
+                : L3(lang, "free", "свободен", "бос")}
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function AdminPanel({ lang, setLang, menu, saveMenu, orders, updateStatus, ackCall, setBookingEnd, refreshOrders, goSite, cafeInfo, saveCafeStatus }) {
   const [tab, setTab] = useState("orders");
   const [filter, setFilter] = useState("type:table");
@@ -3036,6 +3211,10 @@ function AdminPanel({ lang, setLang, menu, saveMenu, orders, updateStatus, ackCa
   const [settling, setSettling] = useState(false);
   const [editingOrderItems, setEditingOrderItems] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [salesHistory, setSalesHistory] = useState(EMPTY_SALES_HISTORY);
+  const [historyPeriod, setHistoryPeriod] = useState("weeks");
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
   // Fresh orders staff haven't acknowledged yet — drives a repeating alarm
   // and a persistent banner on every admin tab.
   const [unackedOrders, setUnackedOrders] = useState([]);
@@ -3059,51 +3238,61 @@ function AdminPanel({ lang, setLang, menu, saveMenu, orders, updateStatus, ackCa
     }
     saveCafeStatus({ ...cafeInfo, hours: hoursDraft });
   };
-  // Delivery zone radii editor (schedule tab). Edited locally and saved with
-  // an explicit button so typing isn't clobbered by the 60s settings poll.
-  const [zoneKm, setZoneKm] = useState(["", "", ""]);
+  // Delivery zone editor. Edited locally and saved explicitly so typing is
+  // not clobbered by the settings poll.
+  const [zoneDraft, setZoneDraft] = useState(() =>
+    deliveryCfgOf(cafeInfo).zones.map((zone) => ({
+      km: String(zone.km),
+      fee: String(zone.fee),
+    })));
   const deliveryKey = JSON.stringify((cafeInfo && cafeInfo.delivery) || null);
   useEffect(() => {
-    setZoneKm(deliveryCfgOf(cafeInfo).zones.map((z) => String(z.km)));
+    setZoneDraft(deliveryCfgOf(cafeInfo).zones.map((zone) => ({
+      km: String(zone.km),
+      fee: String(zone.fee),
+    })));
   }, [deliveryKey]);
+  const updateZoneDraft = (index, field, value) => {
+    setZoneDraft((current) => current.map((zone, i) => (
+      i === index ? { ...zone, [field]: value } : zone
+    )));
+  };
+  const addZone = () => {
+    if (zoneDraft.length >= MAX_DELIVERY_ZONES) return;
+    const last = zoneDraft[zoneDraft.length - 1] || { km: "0", fee: "0" };
+    const nextKm = Math.round(((Number(last.km) || 0) + 2) * 10) / 10;
+    const nextFee = Math.max(0, (Number(last.fee) || 0) + 200);
+    setZoneDraft((current) => [
+      ...current,
+      { km: String(nextKm), fee: String(nextFee) },
+    ]);
+  };
+  const removeZone = (index) => {
+    if (zoneDraft.length <= 1) return;
+    setZoneDraft((current) => current.filter((_, i) => i !== index));
+  };
   const saveZones = () => {
-    const cfg = deliveryCfgOf(cafeInfo);
-    const kms = zoneKm.map(Number);
-    if (kms.some((k) => !(k > 0)) || !(kms[0] < kms[1] && kms[1] < kms[2])) {
-      alert(L("Radii must be positive and increasing, e.g. 2 < 4 < 6.",
-              "Радиусы должны быть положительными и по возрастанию, напр. 2 < 4 < 6."));
+    const zones = zoneDraft.map((zone) => ({
+      km: Number(zone.km),
+      fee: Number(zone.fee),
+    }));
+    const valid = zones.length >= 1 && zones.length <= MAX_DELIVERY_ZONES
+      && zones.every((zone) => Number.isFinite(zone.km) && zone.km > 0 && zone.km <= 100
+        && Number.isInteger(zone.fee) && zone.fee >= 0 && zone.fee <= 100000)
+      && zones.every((zone, i) => i === 0 || zones[i - 1].km < zone.km);
+    if (!valid) {
+      alert(L(
+        "Use increasing radii from 0.1 to 100 km and whole-number prices from 0 to 100,000 ₸.",
+        "Укажите возрастающие радиусы от 0,1 до 100 км и целые цены от 0 до 100 000 ₸.",
+      ));
       return;
     }
-    saveCafeStatus({ ...cafeInfo, delivery: { ...cfg, zones: cfg.zones.map((z, i) => ({ ...z, km: kms[i] })) } });
-  };
-  const [tableCountsDraft, setTableCountsDraft] = useState(() => Object.fromEntries(
-    TABLES.map((tbl) => [tbl.id, String(Math.max(1, parseInt((cafeInfo.tableCounts || {})[tbl.id], 10) || 1))])
-  ));
-  const tableCountsKey = JSON.stringify(cafeInfo.tableCounts || null);
-  useEffect(() => {
-    setTableCountsDraft(Object.fromEntries(
-      TABLES.map((tbl) => [tbl.id, String(Math.max(1, parseInt((cafeInfo.tableCounts || {})[tbl.id], 10) || 1))])
-    ));
-  }, [tableCountsKey]);
-  const saveTableCounts = () => {
-    const counts = {};
-    for (const tbl of TABLES) {
-      const raw = tableCountsDraft[tbl.id];
-      const value = Number(raw);
-      if (!/^\d+$/.test(raw || "") || !Number.isInteger(value) || value < 1 || value > 99) {
-        alert(L("Each table quantity must be a whole number from 1 to 99.",
-                "Количество каждого столика должно быть целым числом от 1 до 99."));
-        return;
-      }
-      counts[tbl.id] = value;
-    }
-    saveCafeStatus({ ...cafeInfo, tableCounts: counts });
+    saveCafeStatus({ ...cafeInfo, delivery: { zones } });
   };
   const typeTabs = [
     ["type:table", "В зале", "table"],
     ["type:pickup", "С собой", "pickup"],
     ["type:delivery", "Доставка", "delivery"],
-    ["type:booking", "Бронь зала", "booking"],
   ];
   const statusTabs = [
     ["awaiting_confirmation", STATUS.awaiting_confirmation[lang]],
@@ -3115,7 +3304,7 @@ function AdminPanel({ lang, setLang, menu, saveMenu, orders, updateStatus, ackCa
     ["all", L("All", "Все")],
   ];
   const badgeCounts = useMemo(() => {
-    const counts = { table: 0, pickup: 0, delivery: 0, booking: 0 };
+    const counts = { table: 0, pickup: 0, delivery: 0 };
     orders.forEach((o) => {
       if (Object.prototype.hasOwnProperty.call(counts, o.type) && ["awaiting_confirmation", "new"].includes(o.status)) {
         counts[o.type] += 1;
@@ -3206,6 +3395,17 @@ const handleSaveItems = async (id, items, total) => {
 };
 
   const loadLedger = useCallback(async () => { const d = await apiGetLedger(); if (d) setLedger(d); }, []);
+  const loadSalesHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    const data = await apiGetSalesHistory();
+    if (data) {
+      setSalesHistory(data);
+      setHistoryError(false);
+    } else {
+      setHistoryError(true);
+    }
+    setHistoryLoading(false);
+  }, []);
 
   useEffect(() => {
     if (tab === "finance") { loadLedger(); }
@@ -3215,6 +3415,10 @@ const handleSaveItems = async (id, items, total) => {
     const t = setInterval(refreshOrders, 20000);
     return () => clearInterval(t);
   }, [tab, refreshOrders, loadLedger]);
+
+  useEffect(() => {
+    if (tab === "stats") loadSalesHistory();
+  }, [tab, loadSalesHistory]);
 
   const settle = async () => {
     setSettling(true);
@@ -3236,9 +3440,7 @@ const handleSaveItems = async (id, items, total) => {
   const scheduledOrders = splitQueue ? shown.filter((o) => isFutureScheduled(o, nowTick)) : [];
   const liveOrders = splitQueue ? shown.filter((o) => !isFutureScheduled(o, nowTick)) : shown;
 
-  const today = orders.filter((o) => isToday(o.ts) && o.status !== "cancelled");
-  const revenue = today.reduce((s, o) => s + o.total, 0);
-  const avg = today.length ? Math.round(revenue / today.length) : 0;
+  const salesTotals = useMemo(() => salesTotalsForPeriods(orders), [orders]);
   const top = useMemo(() => {
     const m = {};
     orders.filter((o) => o.status !== "cancelled").forEach((o) => o.items.forEach((it) => {
@@ -3266,20 +3468,21 @@ const handleSaveItems = async (id, items, total) => {
             </button>
           </div>
         </div>
-        <div className="max-w-5xl mx-auto px-4 pb-3 flex gap-2">
-          {[["orders", L("Orders", "Заказы")], ["menu", L("Menu", "Меню")], ["stats", L("Analytics", "Аналитика")], ["finance", L("Finance", "Финансы")], ["schedule", L("Schedule", "График")]].map(([id, label]) => (
-            <button key={id} onClick={() => setTab(id)} className="relative text-sm font-bold px-4 py-2 rounded-full"
+        <nav aria-label={L("Admin sections", "Разделы админки")}
+          className="max-w-5xl mx-auto px-4 pb-3 grid grid-cols-3 gap-2 md:flex md:items-center">
+          {[["orders", L("Orders", "Заказы")], ["menu", L("Menu", "Меню")], ["tables", L("Tables", "Столики")], ["stats", L("Analytics", "Аналитика")], ["finance", L("Finance", "Финансы")], ["schedule", L("Schedule", "График")]].map(([id, label]) => (
+            <button key={id} onClick={() => setTab(id)} className="relative min-w-0 text-xs md:text-sm font-bold px-2 md:px-4 py-2 rounded-full whitespace-nowrap"
               style={{ background: tab === id ? P.teal : "rgba(255,255,255,.08)", color: "#fff" }}>
               {label}
             </button>
             ))}
             <button
              onClick={() => { localStorage.removeItem("aspan-token"); window.location.reload(); }}
-             className="text-xs font-bold px-3 py-1.5 rounded-full"
+             className="col-span-3 md:col-auto md:ml-auto text-xs font-bold px-3 py-2 md:py-1.5 rounded-full"
              style={{ background: "rgba(255,255,255,.12)", color: "#fff" }}>
           {L("Logout", "Выйти")}
             </button>
-        </div>
+        </nav>
       </header>
 
       {unackedOrders.length > 0 && (
@@ -3478,18 +3681,96 @@ const handleSaveItems = async (id, items, total) => {
           </>
         )}
 
+        {tab === "tables" && <TableBusyEditor lang={lang} />}
+
         {tab === "stats" && (
           <>
-            <div className="grid grid-cols-3 gap-3 mb-6">
-              {[[L("Orders today", "Заказов сегодня"), String(today.length)],
-                [L("Revenue today", "Выручка сегодня"), fmt(revenue)],
-                [L("Average check", "Средний чек"), fmt(avg)]].map(([label, val]) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+              {[[L("Orders today", "Заказов сегодня"), String(salesTotals.todayOrders)],
+                [L("Revenue today", "Выручка сегодня"), fmt(salesTotals.todayRevenue)],
+                [L("Average check today", "Средний чек сегодня"), fmt(salesTotals.averageToday)],
+                [L("Revenue this week", "Выручка за неделю"), fmt(salesTotals.weekRevenue)],
+                [L("Revenue this month", "Выручка за месяц"), fmt(salesTotals.monthRevenue)],
+                [L("Revenue this year", "Выручка за год"), fmt(salesTotals.yearRevenue)]].map(([label, val]) => (
                 <div key={label} className="rounded-2xl p-4" style={{ background: P.card, border: `1px solid ${P.line}` }}>
                   <div className="text-xs font-bold" style={{ color: P.sub }}>{label}</div>
                   <div className="font-extrabold mt-1" style={{ fontFamily: FONT_DISPLAY, fontSize: "clamp(13px,2.5vw,18px)" }}>{val}</div>
                 </div>
               ))}
             </div>
+            <section className="rounded-2xl p-5 mb-6" style={{ background: P.card, border: `1px solid ${P.line}` }}>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="font-extrabold" style={{ fontFamily: FONT_DISPLAY, fontSize: 18 }}>
+                    {L("Sales history", "История продаж")}
+                  </h2>
+                  <p className="text-xs mt-1" style={{ color: P.sub }}>
+                    {L(
+                      "Stored permanently from website orders.",
+                      "Хранится постоянно на основе заказов с сайта.",
+                    )}
+                  </p>
+                </div>
+                <button type="button" onClick={loadSalesHistory} disabled={historyLoading}
+                  aria-label={L("Refresh sales history", "Обновить историю продаж")}
+                  className="shrink-0 w-9 h-9 rounded-full font-extrabold"
+                  style={{ background: P.bone, border: `1px solid ${P.line}`, opacity: historyLoading ? 0.55 : 1 }}>
+                  {historyLoading ? "..." : "↻"}
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                {[
+                  ["weeks", L("Weeks", "Недели")],
+                  ["months", L("Months", "Месяцы")],
+                  ["years", L("Years", "Годы")],
+                ].map(([value, label]) => (
+                  <button key={value} type="button" onClick={() => setHistoryPeriod(value)}
+                    aria-pressed={historyPeriod === value}
+                    className="text-xs font-extrabold px-3 py-2 rounded-full"
+                    style={{
+                      background: historyPeriod === value ? P.ink : P.bone,
+                      color: historyPeriod === value ? "#fff" : P.txt,
+                      border: `1px solid ${historyPeriod === value ? P.ink : P.line}`,
+                    }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {historyError && (
+                <div className="rounded-xl px-4 py-3 text-sm font-bold" style={{ background: "#FAE5E3", color: "#933A34" }}>
+                  {L("Could not load history. Please refresh it.", "Не удалось загрузить историю. Обновите её.")}
+                </div>
+              )}
+              {!historyError && historyLoading && salesHistory[historyPeriod].length === 0 && (
+                <div className="text-sm py-3" style={{ color: P.sub }}>{L("Loading history...", "Загрузка истории...")}</div>
+              )}
+              {!historyError && !historyLoading && salesHistory[historyPeriod].length === 0 && (
+                <div className="text-sm py-3" style={{ color: P.sub }}>{L("No sales recorded yet.", "Продаж пока нет.")}</div>
+              )}
+              {!historyError && salesHistory[historyPeriod].length > 0 && (
+                <div className="flex flex-col gap-2 max-h-96 overflow-y-auto">
+                  {salesHistory[historyPeriod].map((item) => (
+                    <div key={item.key} className="rounded-xl p-4" style={{ background: P.bone }}>
+                      <div className="font-extrabold text-sm">
+                        {salesHistoryPeriodLabel(item, historyPeriod, lang)}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 mt-3 pt-3" style={{ borderTop: `1px solid ${P.line}` }}>
+                        {[
+                          [L("Orders", "Заказы"), String(item.orders)],
+                          [L("Revenue", "Выручка"), fmt(item.revenue)],
+                          [L("Average check", "Средний чек"), fmt(item.average)],
+                        ].map(([label, value]) => (
+                          <div key={label} className="min-w-0">
+                            <div className="text-[10px] sm:text-xs font-bold" style={{ color: P.sub }}>{label}</div>
+                            <div className="text-xs sm:text-sm font-extrabold mt-1 break-words">{value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
             <div className="rounded-2xl p-5" style={{ background: P.card, border: `1px solid ${P.line}` }}>
               <div className="font-extrabold mb-4" style={{ fontFamily: FONT_DISPLAY, fontSize: 14 }}>{L("Top dishes (all time)", "Топ блюд (за всё время)")}</div>
               {top.length === 0 ? (
@@ -3623,79 +3904,65 @@ const handleSaveItems = async (id, items, total) => {
               {L("Save hours", "Сохранить часы")}
             </button>
 
-            {/* Delivery fee rings: fees are fixed (0/300/500 ₸), staff tune
-                only the radii. The customer map draws these same circles. */}
+            {/* Delivery fee rings. Staff can edit radius and price and can
+                add or remove rings. The customer map uses these settings. */}
             <div className="font-extrabold mt-8 mb-1" style={{ fontFamily: FONT_DISPLAY, fontSize: 16 }}>{L("Delivery zones", "Зоны доставки")}</div>
             <div className="text-xs mb-3" style={{ color: P.sub }}>
-              {L("The delivery price is set by which circle the client's map pin lands in. Outside the last circle delivery is refused.",
-                 "Цена доставки определяется кругом, в который попадает точка клиента на карте. Вне последнего круга доставка недоступна.")}
+              {L("Set a radius and price for each zone. Radii must increase; outside the last zone delivery is refused.",
+                 "Укажите радиус и цену каждой зоны. Радиусы должны возрастать; вне последней зоны доставка недоступна.")}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {deliveryCfgOf(cafeInfo).zones.map((z, i) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {zoneDraft.map((zone, i) => (
                 <div key={i} className="p-3 rounded-xl" style={{ background: P.bone }}>
-                  <div className="text-xs font-extrabold mb-2" style={{ color: ["#3F7A2E", "#8A5A12", "#933A34"][i] }}>
-                    {z.fee === 0 ? L("Free delivery", "Бесплатная доставка") : `${L("Delivery", "Доставка")} ${fmt(z.fee)}`}
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="text-xs font-extrabold" style={{ color: deliveryZoneColor(i, zoneDraft.length) }}>
+                      <span aria-hidden="true">●</span> {L(`Zone ${i + 1}`, `Зона ${i + 1}`)}
+                    </div>
+                    {zoneDraft.length > 1 && (
+                      <button type="button" onClick={() => removeZone(i)}
+                        className="text-[11px] font-extrabold px-2.5 py-1 rounded-full"
+                        style={{ background: "#FAE5E3", color: "#933A34" }}>
+                        {L("Remove", "Удалить")}
+                      </button>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input type="number" min="0.1" step="0.1" inputMode="decimal"
-                      value={zoneKm[i]}
-                      onChange={(e) => setZoneKm((p) => p.map((v, j) => (j === i ? e.target.value : v)))}
-                      className="w-full text-sm font-bold p-2 rounded-lg outline-none text-center"
-                      style={{ background: P.card, border: `1px solid ${P.line}`, color: P.txt }} />
-                    <span className="text-sm font-bold" style={{ color: P.sub }}>{L("km", "км")}</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="min-w-0">
+                      <span className="block text-[11px] font-bold mb-1" style={{ color: P.sub }}>
+                        {L("Radius, km", "Радиус, км")}
+                      </span>
+                      <input type="number" min="0.1" max="100" step="0.1" inputMode="decimal"
+                        value={zone.km}
+                        onChange={(e) => updateZoneDraft(i, "km", e.target.value)}
+                        className="w-full text-sm font-bold p-2 rounded-lg outline-none text-center"
+                        style={{ background: P.card, border: `1px solid ${P.line}`, color: P.txt }} />
+                    </label>
+                    <label className="min-w-0">
+                      <span className="block text-[11px] font-bold mb-1" style={{ color: P.sub }}>
+                        {L("Price, ₸", "Цена, ₸")}
+                      </span>
+                      <input type="number" min="0" max="100000" step="50" inputMode="numeric"
+                        value={zone.fee}
+                        onChange={(e) => updateZoneDraft(i, "fee", e.target.value)}
+                        className="w-full text-sm font-bold p-2 rounded-lg outline-none text-center"
+                        style={{ background: P.card, border: `1px solid ${P.line}`, color: P.txt }} />
+                    </label>
                   </div>
                 </div>
               ))}
             </div>
-            <button onClick={saveZones} className="mt-3 px-6 py-2.5 rounded-full font-extrabold text-sm"
-              style={{ background: P.teal, color: "#fff" }}>
-              {L("Save zones", "Сохранить зоны")}
-            </button>
-
-            {/* Part 2: stop-list for table reservations. A stopped capacity is
-                hidden from customers in the booking wizard. */}
-            <div className="font-extrabold mt-8 mb-1" style={{ fontFamily: FONT_DISPLAY, fontSize: 16 }}>{L("Table reservations", "Бронь столиков")}</div>
-            <div className="text-xs mb-3" style={{ color: P.sub }}>
-              {L("«Qty» — how many physical tables of this size exist; that many parties can book the same time. The switch hides the size from clients entirely.",
-                 "«Шт» — сколько физических столиков этого размера есть; столько компаний могут забронировать одно время. Переключатель полностью скрывает размер от клиентов.")}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={addZone}
+                disabled={zoneDraft.length >= MAX_DELIVERY_ZONES}
+                className="px-5 py-2.5 rounded-full font-extrabold text-sm"
+                style={{ background: P.bone, color: P.txt, border: `1px solid ${P.line}`, opacity: zoneDraft.length >= MAX_DELIVERY_ZONES ? 0.5 : 1 }}>
+                + {L("Add zone", "Добавить зону")}
+              </button>
+              <button onClick={saveZones} className="px-6 py-2.5 rounded-full font-extrabold text-sm"
+                style={{ background: P.teal, color: "#fff" }}>
+                {L("Save zones", "Сохранить зоны")}
+              </button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {TABLES.map((tbl) => {
-                const stop = (cafeInfo.tableStop || []).includes(tbl.id);
-                const toggle = () => {
-                  const cur = cafeInfo.tableStop || [];
-                  const nextStop = stop ? cur.filter((x) => x !== tbl.id) : [...cur, tbl.id];
-                  saveCafeStatus({ ...cafeInfo, tableStop: nextStop });
-                };
-                return (
-                  <div key={tbl.id} className="flex items-center justify-between gap-2 p-3 rounded-xl" style={{ background: P.bone }}>
-                    <div>
-                      <div className="font-bold text-sm" style={{ color: P.txt }}>{pickL(tbl.name, lang)}</div>
-                      <div className="text-xs mt-0.5" style={{ color: stop ? "#933A34" : "#3F7A2E" }}>
-                        {stop ? L("In stop-list (hidden)", "В стоп-листе (скрыт)") : L("Available", "Доступен")}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <label className="flex items-center gap-1 text-xs font-bold" style={{ color: P.sub }}>
-                        {L("Qty", "Шт")}
-                        <input type="number" min="1" max="99" value={tableCountsDraft[tbl.id] || ""}
-                          onChange={(e) => setTableCountsDraft((current) => ({ ...current, [tbl.id]: e.target.value }))}
-                          className="w-12 text-sm font-bold p-1.5 rounded-lg outline-none text-center"
-                          style={{ background: P.card, border: `1px solid ${P.line}`, color: P.txt }} />
-                      </label>
-                      <button onClick={toggle} className="text-xs font-extrabold px-4 py-2 rounded-full"
-                        style={{ background: stop ? "#C7514A" : "#5E8C4A", color: "#fff" }}>
-                        {stop ? L("Off", "Выкл") : L("On", "Вкл")}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <button onClick={saveTableCounts} className="mt-3 px-6 py-2.5 rounded-full font-extrabold text-sm"
-              style={{ background: P.teal, color: "#fff" }}>
-              {L("Save table quantities", "Сохранить количество столиков")}
-            </button>
           </div>
         )}
       </main>
@@ -3724,10 +3991,8 @@ export default function App() {
   const [cartOpen, setCartOpen] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
   const [cafeInfo, setCafeInfo] = useState({ isOpen: true, hours: {} });
-  const [bookingOpen, setBookingOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
-  const [activeBooking, setActiveBooking] = useState(null); // set while a reservation is in progress
 
   const t = useCallback((k) => T[lang][k] || k, [lang]);
 
@@ -3902,25 +4167,13 @@ export default function App() {
           <GuestSite lang={lang} setLang={setLang} t={t} menu={menu} cart={cart} setQty={setQty} cafeInfo={cafeInfo}
             openCart={() => setCartOpen(true)} cartCount={cartCount} cartTotal={cartTotal}
             goAdmin={() => setView("admin")} lastOrder={lastOrder} orders={orders}
-            openBooking={() => setBookingOpen(true)} openBoard={() => setBoardOpen(true)}
+            openBoard={() => setBoardOpen(true)}
             openPrivacy={() => setPrivacyOpen(true)} />
           <OrdersBoard open={boardOpen} onClose={() => setBoardOpen(false)} orders={orders}
             lang={lang} t={t} refreshOrders={refreshOrders} />
-          <BookingWizard open={bookingOpen} onClose={() => setBookingOpen(false)} lang={lang} t={t} cafeInfo={cafeInfo}
-            onProceed={(booking, wantsFood) => {
-              setActiveBooking(booking);
-              setBookingOpen(false);
-              if (wantsFood) {
-                // let them add dishes, then open the cart
-                document.getElementById("menu")?.scrollIntoView({ behavior: "smooth" });
-              } else {
-                setCartOpen(true); // room only → straight to order summary
-              }
-            }} />
           <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cart} menu={menu}
             lang={lang} t={t} setQty={setQty} placeOrder={placeOrder} lastOrder={lastOrder}
             orders={orders} refreshOrders={refreshOrders} resetAfterOrder={() => setLastOrder(lastOrder)}
-            booking={activeBooking} clearBooking={() => setActiveBooking(null)}
             kaspiUrl={safeKaspiUrl(cafeInfo && cafeInfo.kaspiPayUrl)}
             isClosed={cafeInfo ? cafeInfo.effectiveOpen === false : false}
             openPrivacy={() => setPrivacyOpen(true)} cafeInfo={cafeInfo} />

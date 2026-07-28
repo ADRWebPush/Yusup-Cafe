@@ -31,6 +31,7 @@ CORS(app,
      supports_credentials=True)
 
 from db import get_db
+from sales_history import aggregate_sales_history
 
 def init_db():
     conn = get_db()
@@ -48,6 +49,25 @@ def init_db():
             status TEXT NOT NULL,
             payment_id TEXT,
             data JSONB NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS sales_history (
+            order_id TEXT PRIMARY KEY,
+            ts BIGINT NOT NULL,
+            status TEXT NOT NULL,
+            total BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS sales_history_ts
+        ON sales_history (ts)
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS table_occupancy (
+            table_number INTEGER PRIMARY KEY CHECK (table_number BETWEEN 1 AND 30),
+            occupied_until BIGINT NOT NULL
         )
     """)
     conn.execute("""
@@ -326,50 +346,54 @@ def kaspi_pay_url():
     return ""
 
 
-# Service charge for waiter-served orders only: dine-in and table bookings.
+# Service charge for waiter-served dine-in orders only.
 # To-go and delivery have no waiter, so no fee.
-SERVICE_FEE_RATE = 0.10
-SERVICE_FEE_TYPES = {"table", "booking"}
+SERVICE_FEE_RATE = 0
+SERVICE_FEE_TYPES = {"table"}
 PLATFORM_COMMISSION_RATE = 0.01
 
-# Delivery pricing: three concentric zones around the restaurant. The fee is
+# Delivery pricing: concentric zones around the restaurant. The fee is
 # decided by which ring the client's map pin falls in; outside the last ring
-# the order is refused. Radii are staff-editable via cafe settings; fees stay
-# fixed unless changed in the settings JSON. Computed here — never trusted
-# from the client — so a tampered request can't dodge the charge or order
+# the order is refused. Radii and fees are staff-editable via cafe settings.
+# Computed here, never trusted from the client, so a tampered request cannot
+# dodge the charge or order
 # from another city.
 import math
 
+MAX_DELIVERY_ZONES = 8
 DELIVERY_DEFAULTS = {
-    # Subhi Food — Юсуф Сареми 5/17, Сайрам (the physical restaurant). The
+    # Yusup Cafe, Sayram. 2GIS publishes coordinates as longitude, latitude.
     # ring centre is code-controlled only (no admin UI sets it), so it always
     # comes from here and can never drift from a stale stored value.
-    "lat": 42.2976, "lng": 69.7592,
+    "lat": 42.434279, "lng": 69.825314,
     "zones": [{"km": 2, "fee": 0}, {"km": 4, "fee": 300}, {"km": 6, "fee": 500}],
 }
 
 
 def delivery_cfg(settings):
     d = (settings or {}).get("delivery") or {}
-    defaults = DELIVERY_DEFAULTS["zones"]
-    zones = []
     raw = d.get("zones")
-    if isinstance(raw, list) and len(raw) == 3:
-        for i, z in enumerate(raw):
-            z = z if isinstance(z, dict) else {}
+    candidate = []
+    if isinstance(raw, list) and 1 <= len(raw) <= MAX_DELIVERY_ZONES:
+        for zone in raw:
+            if not isinstance(zone, dict):
+                candidate = []
+                break
             try:
-                km = float(z.get("km"))
+                km = float(zone.get("km"))
+                fee = int(zone.get("fee"))
             except (TypeError, ValueError):
-                km = defaults[i]["km"]
-            if not (km > 0):
-                km = defaults[i]["km"]
-            try:
-                fee = max(0, int(z.get("fee")))
-            except (TypeError, ValueError):
-                fee = defaults[i]["fee"]
-            zones.append({"km": km, "fee": fee})
-    else:
-        zones = [dict(z) for z in defaults]
+                candidate = []
+                break
+            candidate.append({"km": km, "fee": fee})
+    valid = (
+        bool(candidate)
+        and all(0 < zone["km"] <= 100 and 0 <= zone["fee"] <= 100_000
+                for zone in candidate)
+        and all(candidate[index - 1]["km"] < candidate[index]["km"]
+                for index in range(1, len(candidate)))
+    )
+    zones = candidate if valid else [dict(zone) for zone in DELIVERY_DEFAULTS["zones"]]
     # Centre is always the code constant — staff edit radii, never the centre.
     return {"lat": DELIVERY_DEFAULTS["lat"], "lng": DELIVERY_DEFAULTS["lng"], "zones": zones}
 
@@ -480,7 +504,8 @@ def normalize_cafe_settings(raw, current=None):
         if not isinstance(incoming_delivery, dict):
             raise ValueError("invalid_delivery_zones")
         raw_zones = incoming_delivery.get("zones")
-        if not isinstance(raw_zones, list) or len(raw_zones) != 3:
+        if (not isinstance(raw_zones, list)
+                or not 1 <= len(raw_zones) <= MAX_DELIVERY_ZONES):
             raise ValueError("invalid_delivery_zones")
         zones = []
         for zone in raw_zones:
@@ -494,7 +519,8 @@ def normalize_cafe_settings(raw, current=None):
             if not 0 < km <= 100 or not 0 <= fee <= 100_000:
                 raise ValueError("invalid_delivery_zones")
             zones.append({"km": km, "fee": fee})
-        if not zones[0]["km"] < zones[1]["km"] < zones[2]["km"]:
+        if any(zones[index - 1]["km"] >= zones[index]["km"]
+               for index in range(1, len(zones))):
             raise ValueError("invalid_delivery_zones")
         delivery = {"zones": zones}
 
@@ -561,7 +587,7 @@ def bookings_for(conn, date, room_id=None):
     return out
 
 
-ORDER_TYPES = {"table", "pickup", "delivery", "booking"}
+ORDER_TYPES = {"table", "pickup", "delivery"}
 ORDER_ID_RE = re.compile(
     r"^o(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-"
     r"[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|[A-Za-z0-9]{20,80})$"
@@ -1228,6 +1254,125 @@ def settle_ledger():
     })
 
 
+def sync_sales_history(conn):
+    """Upsert the latest persisted state of every current order."""
+    now_ms = int(time.time() * 1000)
+    conn.execute("""
+        INSERT INTO sales_history (order_id, ts, status, total, updated_at)
+        SELECT
+            id,
+            ts,
+            status,
+            CASE
+                WHEN jsonb_typeof(data->'total') = 'number'
+                THEN ROUND((data->>'total')::numeric)::bigint
+                ELSE 0
+            END,
+            %s
+        FROM orders
+        ON CONFLICT (order_id) DO UPDATE SET
+            ts = EXCLUDED.ts,
+            status = EXCLUDED.status,
+            total = EXCLUDED.total,
+            updated_at = EXCLUDED.updated_at
+    """, (now_ms,))
+
+
+@app.route("/api/admin/sales-history", methods=["GET"])
+@require_owner
+def get_sales_history():
+    conn = get_db()
+    try:
+        sync_sales_history(conn)
+        rows = conn.execute(
+            "SELECT ts, status, total FROM sales_history ORDER BY ts DESC"
+        ).fetchall()
+        conn.commit()
+        return jsonify(aggregate_sales_history(rows, CAFE_TZ))
+    finally:
+        conn.close()
+
+
+TABLE_COUNT = 30
+TABLE_OCCUPANCY_HOURS = 14
+TABLE_OCCUPANCY_MS = TABLE_OCCUPANCY_HOURS * 60 * 60 * 1000
+
+
+def _active_table_occupancy(conn, now_ms=None):
+    now_ms = now_ms or int(time.time() * 1000)
+    conn.execute(
+        "DELETE FROM table_occupancy WHERE occupied_until <= %s", (now_ms,)
+    )
+    rows = conn.execute(
+        "SELECT table_number, occupied_until FROM table_occupancy "
+        "ORDER BY table_number"
+    ).fetchall()
+    return {
+        int(row["table_number"]): int(row["occupied_until"])
+        for row in rows
+    }
+
+
+@app.route("/api/admin/tables", methods=["GET"])
+@require_owner
+def get_admin_tables():
+    conn = get_db()
+    try:
+        occupied = _active_table_occupancy(conn)
+        conn.commit()
+        return jsonify({
+            "expiresAfterHours": TABLE_OCCUPANCY_HOURS,
+            "tables": [
+                {
+                    "number": number,
+                    "occupied": number in occupied,
+                    "occupiedUntil": occupied.get(number),
+                }
+                for number in range(1, TABLE_COUNT + 1)
+            ],
+        })
+    finally:
+        conn.close()
+
+
+@app.route("/api/admin/tables/<int:table_number>", methods=["PUT"])
+@require_owner
+def update_admin_table(table_number):
+    if not 1 <= table_number <= TABLE_COUNT:
+        return jsonify({"error": "invalid_table"}), 400
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not isinstance(body.get("occupied"), bool):
+        return jsonify({"error": "invalid_occupied_state"}), 400
+
+    conn = get_db()
+    try:
+        now_ms = int(time.time() * 1000)
+        _active_table_occupancy(conn, now_ms)
+        if body["occupied"]:
+            occupied_until = now_ms + TABLE_OCCUPANCY_MS
+            conn.execute("""
+                INSERT INTO table_occupancy (table_number, occupied_until)
+                VALUES (%s, %s)
+                ON CONFLICT (table_number) DO UPDATE
+                SET occupied_until = EXCLUDED.occupied_until
+            """, (table_number, occupied_until))
+        else:
+            occupied_until = None
+            conn.execute(
+                "DELETE FROM table_occupancy WHERE table_number = %s",
+                (table_number,),
+            )
+        conn.commit()
+        return jsonify({
+            "ok": True,
+            "number": table_number,
+            "occupied": body["occupied"],
+            "occupiedUntil": occupied_until,
+        })
+    finally:
+        conn.close()
+
+
 @app.route("/api/bookings/availability", methods=["GET"])
 def check_availability():
     # Span-aware availability: for the requested date+time each table size
@@ -1275,7 +1420,7 @@ def get_cafe_settings():
     # own clock.
     payload["effectiveOpen"] = cafe_is_open(payload)
     # Normalized delivery zones so the customer map and the admin editor
-    # always see three valid rings even before staff first save them.
+    # always see valid rings even before staff first save them.
     payload["delivery"] = delivery_cfg(payload)
     return jsonify(payload)
 

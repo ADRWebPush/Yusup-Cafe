@@ -128,6 +128,47 @@ class OrderSecurityTests(unittest.TestCase):
         self.assertNotIn("unexpected", order)
         self.assertEqual(order["type"], "pickup")
 
+    def test_online_booking_order_type_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "invalid_order_type"):
+            app_module.normalize_order_request({
+                "id": "o12345678901234567890",
+                "num": 101,
+                "type": "booking",
+            })
+
+    def test_delivery_settings_accept_increasing_dynamic_zones(self):
+        settings = app_module.normalize_cafe_settings({
+            "isOpen": True,
+            "hours": dict(app_module.DEFAULT_HOURS),
+            "delivery": {
+                "zones": [
+                    {"km": 0.5, "fee": 0},
+                    {"km": 2.5, "fee": 500},
+                    {"km": 5, "fee": 900},
+                    {"km": 8, "fee": 1400},
+                ],
+            },
+            "tableStop": [],
+            "tableCounts": {},
+        })
+        self.assertEqual(len(settings["delivery"]["zones"]), 4)
+        self.assertEqual(settings["delivery"]["zones"][3]["fee"], 1400)
+
+    def test_delivery_settings_reject_non_increasing_zones(self):
+        with self.assertRaisesRegex(ValueError, "invalid_delivery_zones"):
+            app_module.normalize_cafe_settings({
+                "isOpen": True,
+                "hours": dict(app_module.DEFAULT_HOURS),
+                "delivery": {
+                    "zones": [
+                        {"km": 4, "fee": 0},
+                        {"km": 2, "fee": 500},
+                    ],
+                },
+                "tableStop": [],
+                "tableCounts": {},
+            })
+
     def test_seed_menu_has_unique_ids_and_valid_prices(self):
         seed = json.loads(
             (BACKEND_DIR / "menu_seed.json").read_text(encoding="utf-8")
