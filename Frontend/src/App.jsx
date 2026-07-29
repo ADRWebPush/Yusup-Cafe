@@ -5,6 +5,12 @@ import "leaflet/dist/leaflet.css";
 import { AnimatePresence, LayoutGroup, motion, useAnimationControls, useReducedMotion } from "motion/react";
 import { salesTotalsForPeriods } from "./adminAnalytics.js";
 import {
+  LOYALTY_TOKEN_KEY,
+  bonusEarnPreview,
+  bonusSpendLimit,
+  clampBonusUse,
+} from "./loyalty.js";
+import {
   MOTION,
   menuItemVariants,
   reducedSectionVariants,
@@ -774,19 +780,69 @@ async function apiGetOrder(id) {
   catch (e) { return null; }
 }
 // Machine-readable reason of the last failed order submission, so checkout
-// can show a specific message (e.g. a booking slot lost to a faster client)
-// without changing apiPlaceOrder's boolean contract.
+// can show a specific message without exposing backend details.
 let LAST_ORDER_ERROR = null;
 async function apiPlaceOrder(order) {
   // Must report real success: the Kaspi flow only opens the payment page
   // after the order is confirmed saved — never send money for a lost order.
   LAST_ORDER_ERROR = null;
   try {
-    const r = await fetch(`${API}/api/orders`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(order) });
+    const r = await fetch(`${API}/api/orders`, {
+      method: "POST",
+      headers: loyaltyHeaders(),
+      body: JSON.stringify(order),
+    });
     if (!r.ok) { try { LAST_ORDER_ERROR = (await r.json()).error || null; } catch (e) {} }
-    return r.ok;
+    return r.ok ? await r.json() : null;
   }
-  catch (e) { return false; }
+  catch (e) { return null; }
+}
+function loyaltyHeaders() {
+  const token = localStorage.getItem(LOYALTY_TOKEN_KEY);
+  return token
+    ? { "X-Loyalty-Token": token, "Content-Type": "application/json" }
+    : { "Content-Type": "application/json" };
+}
+async function apiGetLoyalty() {
+  const token = localStorage.getItem(LOYALTY_TOKEN_KEY);
+  if (!token) return null;
+  try {
+    const r = await fetch(`${API}/api/loyalty/me`, {
+      headers: { "X-Loyalty-Token": token },
+      cache: "no-store",
+    });
+    if (r.status === 401) localStorage.removeItem(LOYALTY_TOKEN_KEY);
+    return r.ok ? await r.json() : null;
+  } catch (e) { return null; }
+}
+async function apiGetAdminLoyalty() {
+  try {
+    const r = await fetch(`${API}/api/admin/loyalty`, {
+      headers: authHeaders(),
+      cache: "no-store",
+    });
+    return r.ok ? await r.json() : null;
+  } catch (e) { return null; }
+}
+async function apiAdjustLoyalty(accountId, amount, note) {
+  try {
+    const r = await fetch(`${API}/api/admin/loyalty/${encodeURIComponent(accountId)}/adjust`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ amount, note }),
+    });
+    return r.ok ? await r.json() : null;
+  } catch (e) { return null; }
+}
+async function apiResetLoyaltyAccess(accountId) {
+  try {
+    const r = await fetch(`${API}/api/admin/loyalty/${encodeURIComponent(accountId)}/reset-access`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: "{}",
+    });
+    return r.ok;
+  } catch (e) { return false; }
 }
 // Client-side mirror of the backend allowlist: only ever open Kaspi domains.
 const safeKaspiUrl = (u) =>
@@ -1025,10 +1081,11 @@ const StatusPill = ({ s, lang }) => {
 // Price breakdown for a live cart / checkout. The service fee only applies
 // to waiter-served orders (dine-in / booking) — withFee=false collapses the
 // breakdown to a plain total for to-go and delivery.
-const PriceBreakdown = ({ subtotal, t, withFee = true, deliveryFee = 0 }) => {
+const PriceBreakdown = ({ subtotal, t, withFee = true, deliveryFee = 0, bonusUsed = 0, lang = "ru" }) => {
   const fee = withFee ? serviceFeeOf(subtotal) : 0;
   const dFee = deliveryFee > 0 ? deliveryFee : 0;
-  if (!fee && !dFee) {
+  const bonus = Math.max(0, Number(bonusUsed) || 0);
+  if (!fee && !dFee && !bonus) {
     return (
       <div className="flex justify-between font-extrabold" style={{ color: P.txt }}><span>{t("total")}</span><span>{fmt(subtotal)}</span></div>
     );
@@ -1038,7 +1095,8 @@ const PriceBreakdown = ({ subtotal, t, withFee = true, deliveryFee = 0 }) => {
       <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>{t("subtotal")}</span><span>{fmt(subtotal)}</span></div>
       {fee > 0 && <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>{t("serviceFee")}</span><span>{fmt(fee)}</span></div>}
       {dFee > 0 && <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>{t("deliveryFeeLbl")}</span><span>{fmt(dFee)}</span></div>}
-      <div className="flex justify-between pt-1.5 mt-1 font-extrabold" style={{ borderTop: `1px solid ${P.line}`, color: P.txt }}><span>{t("totalToPay")}</span><span>{fmt(subtotal + fee + dFee)}</span></div>
+      {bonus > 0 && <div className="flex justify-between py-0.5 text-sm font-bold" style={{ color: P.green }}><span>{L3(lang, "Bonuses", "Бонусы", "Бонустар")}</span><span>−{fmt(bonus)}</span></div>}
+      <div className="flex justify-between pt-1.5 mt-1 font-extrabold" style={{ borderTop: `1px solid ${P.line}`, color: P.txt }}><span>{t("totalToPay")}</span><span>{fmt(Math.max(0, subtotal + fee + dFee - bonus))}</span></div>
     </div>
   );
 };
@@ -1046,10 +1104,11 @@ const PriceBreakdown = ({ subtotal, t, withFee = true, deliveryFee = 0 }) => {
 // Price breakdown for a saved order. Shows the fee rows only when the order
 // actually carries a fee (waiter-served); to-go/delivery and legacy orders
 // show a plain total.
-const OrderPriceBreakdown = ({ order, t }) => {
+const OrderPriceBreakdown = ({ order, t, lang = "ru" }) => {
   const svcFee = typeof order.subtotal === "number" && typeof order.serviceFee === "number" && order.serviceFee > 0 ? order.serviceFee : 0;
   const dFee = typeof order.deliveryFee === "number" && order.deliveryFee > 0 ? order.deliveryFee : 0;
-  if (!svcFee && !dFee) {
+  const bonus = typeof order.bonusUsed === "number" && order.bonusUsed > 0 ? order.bonusUsed : 0;
+  if (!svcFee && !dFee && !bonus) {
     return (
       <div className="flex justify-between font-extrabold" style={{ color: P.txt }}><span>{t("total")}</span><span>{fmt(order.total || 0)}</span></div>
     );
@@ -1059,6 +1118,7 @@ const OrderPriceBreakdown = ({ order, t }) => {
       <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>{t("subtotal")}</span><span>{fmt(order.subtotal || Math.max(0, (order.total || 0) - svcFee - dFee))}</span></div>
       {svcFee > 0 && <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>{t("serviceFee")}</span><span>{fmt(svcFee)}</span></div>}
       {dFee > 0 && <div className="flex justify-between py-0.5 text-sm" style={{ color: P.sub }}><span>{t("deliveryFeeLbl")}</span><span>{fmt(dFee)}</span></div>}
+      {bonus > 0 && <div className="flex justify-between py-0.5 text-sm font-bold" style={{ color: P.green }}><span>{L3(lang, "Bonuses", "Бонусы", "Бонустар")}</span><span>−{fmt(bonus)}</span></div>}
       <div className="flex justify-between pt-1.5 mt-1 font-extrabold" style={{ borderTop: `1px solid ${P.line}`, color: P.txt }}><span>{t("totalToPay")}</span><span>{fmt(order.total || 0)}</span></div>
     </div>
   );
@@ -1590,7 +1650,7 @@ function OrdersBoard({ open, onClose, orders, lang, t, refreshOrders }) {
                   ))}
                   {typeof sel.total === "number" && (
                     <div className="pt-2 mt-1" style={{ borderTop: `1px solid ${P.line}` }}>
-                      <OrderPriceBreakdown order={sel} t={t} />
+                      <OrderPriceBreakdown order={sel} t={t} lang={lang} />
                     </div>
                   )}
                 </div>
@@ -1606,7 +1666,106 @@ function OrdersBoard({ open, onClose, orders, lang, t, refreshOrders }) {
 
 /* ── guest: cart drawer (cart → checkout → confirmation) ─────────────── */
 
-function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, lastOrder, orders, refreshOrders, resetAfterOrder, booking, clearBooking, kaspiUrl, isClosed, openPrivacy, cafeInfo }) {
+function LoyaltyDrawer({ open, onClose, loyalty, loading, refresh, lang }) {
+  const eventLabel = (kind) => ({
+    earn: L3(lang, "Order reward", "Начисление за заказ", "Тапсырыс бонусы"),
+    redeem: L3(lang, "Used for an order", "Использовано в заказе", "Тапсырысқа жұмсалды"),
+    restore: L3(lang, "Returned after cancellation", "Возврат после отмены", "Бас тартудан кейін қайтарылды"),
+    adjustment: L3(lang, "Cafe adjustment", "Корректировка кафе", "Кафе түзетуі"),
+  }[kind] || kind);
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true"
+          aria-label={L3(lang, "Bonuses", "Бонусы", "Бонустар")}
+          initial="closed" animate="open" exit="closed">
+          <motion.div className="absolute inset-0" onClick={onClose}
+            variants={{ closed: { opacity: 0 }, open: { opacity: 1 } }}
+            style={{ background: "rgba(14,22,32,.55)" }} />
+          <motion.aside className="absolute right-0 top-0 h-full w-full sm:w-[420px] flex flex-col"
+            variants={{ closed: { x: "100%" }, open: { x: 0 } }}
+            transition={{ duration: 0.28, ease: MOTION.ease.enter }}
+            style={{ background: P.bone }}>
+            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${P.line}` }}>
+              <div className="font-extrabold text-xl" style={{ fontFamily: FONT_DISPLAY, color: P.txt }}>
+                {L3(lang, "Your bonuses", "Ваши бонусы", "Сіздің бонустарыңыз")}
+              </div>
+              <button type="button" onClick={onClose} aria-label="close" className="w-9 h-9 rounded-full font-bold"
+                style={{ background: P.card, border: `1px solid ${P.line}` }}>×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-5">
+              {loading ? (
+                <div className="text-sm" style={{ color: P.sub }}>{L3(lang, "Loading...", "Загрузка...", "Жүктелуде...")}</div>
+              ) : !loyalty ? (
+                <div className="py-12 text-center">
+                  <div className="mx-auto flex items-center justify-center rounded-full font-extrabold"
+                    style={{ width: 64, height: 64, background: P.teal, color: "#fff", fontSize: 24 }}>B</div>
+                  <div className="font-extrabold mt-5" style={{ color: P.txt }}>
+                    {L3(lang, "Order on the website to start", "Закажите на сайте, чтобы начать", "Бастау үшін сайттан тапсырыс беріңіз")}
+                  </div>
+                  <div className="text-sm mt-2" style={{ color: P.sub }}>
+                    {L3(lang, "You receive 3% after the cafe completes your order.", "После завершения заказа кафе начислит 3%.", "Кафе тапсырысты аяқтағаннан кейін 3% есептеледі.")}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <section className="py-5 px-5 rounded-lg" style={{ background: P.ink, color: "#fff" }}>
+                    <div className="text-xs font-bold" style={{ color: "rgba(255,255,255,.65)" }}>{loyalty.phone}</div>
+                    <div className="mt-2 font-extrabold" style={{ fontFamily: FONT_DISPLAY, fontSize: 36 }}>{fmt(loyalty.balance || 0)}</div>
+                    <div className="text-sm font-bold">{L3(lang, "Available", "Доступно", "Қолжетімді")}</div>
+                    {(loyalty.pending || 0) > 0 && (
+                      <div className="mt-3 text-sm font-bold" style={{ color: "#E7C995" }}>
+                        +{fmt(loyalty.pending)} {L3(lang, "after order completion", "после завершения заказа", "тапсырыс аяқталғаннан кейін")}
+                      </div>
+                    )}
+                  </section>
+                  <div className="grid grid-cols-3 gap-2 my-4 text-center">
+                    {[
+                      [`${loyalty.earnPercent || 3}%`, L3(lang, "earned", "начисляем", "есептеледі")],
+                      [`${loyalty.redeemPercent || 20}%`, L3(lang, "max payment", "макс. оплаты", "макс. төлем")],
+                      [`${loyalty.expiryDays || 90}`, L3(lang, "days", "дней", "күн")],
+                    ].map(([value, label]) => (
+                      <div key={label} className="py-3 px-1 rounded-lg" style={{ background: P.card, border: `1px solid ${P.line}` }}>
+                        <div className="font-extrabold" style={{ color: P.txt }}>{value}</div>
+                        <div className="text-[10px] font-bold mt-1" style={{ color: P.sub }}>{label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between mt-6 mb-2">
+                    <div className="font-extrabold" style={{ color: P.txt }}>{L3(lang, "History", "История", "Тарих")}</div>
+                    <button type="button" onClick={refresh} className="w-8 h-8 rounded-full font-bold" title="Refresh"
+                      style={{ background: P.card, border: `1px solid ${P.line}`, color: P.txt }}>↻</button>
+                  </div>
+                  <div>
+                    {(loyalty.events || []).length === 0 && (
+                      <div className="text-sm py-4" style={{ color: P.sub }}>{L3(lang, "No transactions yet.", "Операций пока нет.", "Әзірге операциялар жоқ.")}</div>
+                    )}
+                    {(loyalty.events || []).map((event, index) => (
+                      <div key={`${event.kind}-${event.orderId || index}-${event.createdAt}`}
+                        className="flex items-center gap-3 py-3" style={{ borderTop: `1px solid ${P.line}` }}>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-bold" style={{ color: P.txt }}>{eventLabel(event.kind)}</div>
+                          <div className="text-xs mt-0.5" style={{ color: P.sub }}>
+                            {new Date(event.createdAt).toLocaleDateString(lang === "en" ? "en-GB" : "ru-RU")}
+                          </div>
+                        </div>
+                        <div className="font-extrabold" style={{ color: event.amount >= 0 ? P.green : P.red }}>
+                          {event.amount >= 0 ? "+" : "−"}{fmt(Math.abs(event.amount))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </motion.aside>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, lastOrder, orders, refreshOrders, resetAfterOrder, booking, clearBooking, kaspiUrl, isClosed, openPrivacy, cafeInfo, loyalty, refreshLoyalty }) {
   const [step, setStep] = useState("cart");
   const [type, setType] = useState("table");
   const reducedMotion = useReducedMotion();
@@ -1649,6 +1808,8 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
   const [schedMode, setSchedMode] = useState("asap");
   const [schedH, setSchedH] = useState("");
   const [schedM, setSchedM] = useState("");
+  const [useBonus, setUseBonus] = useState(false);
+  const [bonusToUse, setBonusToUse] = useState(0);
 
   const clearCheckoutSecurity = useCallback(() => {
     setCaptchaToken("");
@@ -1686,7 +1847,21 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
   const deliveryFee = (!booking && type === "delivery" && location)
     ? deliveryFeeFor(deliveryCfg, location.lat, location.lng)
     : 0;
-  const grandTotal = subtotal + serviceFee + (deliveryFee > 0 ? deliveryFee : 0);
+  const bonusLimit = !booking
+    ? bonusSpendLimit(subtotal, loyalty?.balance || 0, loyalty?.redeemPercent || 20)
+    : 0;
+  const bonusUsed = useBonus
+    ? clampBonusUse(bonusToUse, subtotal, loyalty?.balance || 0, loyalty?.redeemPercent || 20)
+    : 0;
+  const grossTotal = subtotal + serviceFee + (deliveryFee > 0 ? deliveryFee : 0);
+  const grandTotal = Math.max(0, grossTotal - bonusUsed);
+  const bonusPreview = bonusEarnPreview(subtotal, bonusUsed, loyalty?.earnPercent || 3);
+  useEffect(() => {
+    setBonusToUse((current) => clampBonusUse(
+      current, subtotal, loyalty?.balance || 0, loyalty?.redeemPercent || 20,
+    ));
+    if (bonusLimit <= 0) setUseBonus(false);
+  }, [subtotal, bonusLimit, loyalty?.balance, loyalty?.redeemPercent]);
   // The public orders list is sanitized (no address/table/booking and no
   // ids), so the tracked order's full details come from a direct by-id
   // fetch — only this browser knows the id it generated at checkout. The
@@ -1757,6 +1932,9 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
       else setStep("cart");
     }
   }, [open]);
+  useEffect(() => {
+    if (open && step === "checkout" && refreshLoyalty) refreshLoyalty();
+  }, [open, step, refreshLoyalty]);
 
   // Status-change notifications for the tracked order (poll at 20s to stay
   // well under the API rate limit; countdowns tick locally without network).
@@ -1803,6 +1981,9 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
 
     if (!booking) {
       if (type === "table" && !table.trim()) return setErr(t("needTable"));
+      if (type === "table" && !phone.trim()) {
+        return setErr(L3(lang, "Enter your phone to receive website bonuses.", "Введите телефон, чтобы получать бонусы сайта.", "Сайт бонустарын алу үшін телефонды енгізіңіз."));
+      }
       if (type === "pickup" && (!name.trim() || !phone.trim())) return setErr(t("needContacts"));
       if (type === "delivery") {
         if (!name.trim() || !phone.trim()) return setErr(t("needContacts"));
@@ -1860,6 +2041,7 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
         subtotal, serviceFee,
         deliveryFee: type === "delivery" && deliveryFee > 0 ? deliveryFee : 0,
         total: grandTotal,
+        bonusToUse: bonusUsed,
         scheduledFor,
         // Kaspi orders wait for staff to confirm the money (the server
         // enforces this status regardless of what we send here).
@@ -1872,13 +2054,20 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
     if (!placed) {
       // Do NOT advance and never open Kaspi for an unsaved order. The
       // captcha token is single-use — reset the widget for a clean retry.
-      setErr(LAST_ORDER_ERROR === "slot_taken" ? t("slotTaken") : t("orderFailed"));
+      setErr(
+        LAST_ORDER_ERROR === "slot_taken"
+          ? t("slotTaken")
+          : LAST_ORDER_ERROR === "loyalty_login_required"
+            ? L3(lang, "Use the phone linked to this bonus balance.", "Используйте телефон, связанный с этим бонусным балансом.", "Осы бонус балансына байланыстырылған телефонды пайдаланыңыз.")
+            : t("orderFailed")
+      );
       setCaptchaToken("");
       if (window.turnstile && turnstileWidgetId.current !== null) {
         try { window.turnstile.reset(turnstileWidgetId.current); } catch (e) {}
       }
       return;
     }
+    if (refreshLoyalty) refreshLoyalty();
     if (viaKaspi) window.open(kaspiUrl, "_blank", "noopener,noreferrer");
     setStep("done");
   };
@@ -1984,6 +2173,14 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                   </div>
                 </div>
               )}
+              {!booking && type === "table" && (
+                <label className="block">
+                  <div className="text-sm font-bold mb-1.5" style={{ color: P.txt }}>
+                    {t("phone")}
+                  </div>
+                  <PhoneInput value={phone} onChange={setPhone} lang={lang} />
+                </label>
+              )}
               {!booking && (type === "pickup" || type === "delivery") && (
                 <>
                   <Field label={t("yourName")} value={name} onChange={setName} ph="Aza" />
@@ -2067,6 +2264,55 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                   )}
                 </div>
               )}
+              {!booking && (
+                <section className="rounded-lg p-4" style={{ background: P.card, border: `1px solid ${P.line}` }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-extrabold text-sm" style={{ color: P.txt }}>
+                        {L3(lang, "Website bonuses", "Бонусы сайта", "Сайт бонустары")}
+                      </div>
+                      <div className="text-xs mt-1" style={{ color: P.sub }}>
+                        {loyalty
+                          ? `${L3(lang, "Available", "Доступно", "Қолжетімді")}: ${fmt(loyalty.balance || 0)}`
+                          : L3(lang, "Earn 3% after this order is completed.", "Получите 3% после завершения этого заказа.", "Осы тапсырыс аяқталғаннан кейін 3% алыңыз.")}
+                      </div>
+                    </div>
+                    {bonusLimit > 0 && (
+                      <label className="flex items-center gap-2 text-xs font-bold" style={{ color: P.txt }}>
+                        <input type="checkbox" checked={useBonus}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            setUseBonus(checked);
+                            if (checked && !bonusToUse) setBonusToUse(bonusLimit);
+                          }} />
+                        {L3(lang, "Use", "Списать", "Жұмсау")}
+                      </label>
+                    )}
+                  </div>
+                  {useBonus && bonusLimit > 0 && (
+                    <div className="mt-4">
+                      <div className="flex items-center gap-3">
+                        <input type="range" min="0" max={bonusLimit} step="1" value={bonusUsed}
+                          aria-label={L3(lang, "Bonuses to use", "Сколько бонусов списать", "Жұмсалатын бонустар")}
+                          onChange={(event) => setBonusToUse(Number(event.target.value))}
+                          className="flex-1" style={{ accentColor: P.teal }} />
+                        <input type="number" min="0" max={bonusLimit} step="1" value={bonusUsed}
+                          onChange={(event) => setBonusToUse(clampBonusUse(
+                            event.target.value, subtotal, loyalty?.balance || 0, loyalty?.redeemPercent || 20,
+                          ))}
+                          className="w-24 rounded-lg px-2 py-2 text-sm font-extrabold text-right outline-none"
+                          style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt }} />
+                      </div>
+                      <div className="text-xs mt-2" style={{ color: P.sub }}>
+                        {L3(lang, "Maximum for this order", "Максимум для этого заказа", "Осы тапсырыс үшін максимум")}: {fmt(bonusLimit)}
+                      </div>
+                    </div>
+                  )}
+                  <div className="text-xs font-bold mt-3" style={{ color: P.green }}>
+                    +{fmt(bonusPreview)} {L3(lang, "pending after completion", "будет начислено после завершения", "аяқталғаннан кейін есептеледі")}
+                  </div>
+                </section>
+              )}
               <Field label={t("comment")} value={comment} onChange={setComment} ph={t("commentPh")} area />
               {/* Turnstile widget — rendered explicitly via useEffect above */}
               <div ref={turnstileRef} />
@@ -2087,7 +2333,8 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                 {subtotal > 0 && (
                   <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${P.line}` }}>
                     <PriceBreakdown subtotal={subtotal} t={t} withFee={feeApplies}
-                      deliveryFee={!booking && type === "delivery" && deliveryFee > 0 ? deliveryFee : 0} />
+                      deliveryFee={!booking && type === "delivery" && deliveryFee > 0 ? deliveryFee : 0}
+                      bonusUsed={bonusUsed} lang={lang} />
                   </div>
                 )}
               </div>
@@ -2112,7 +2359,15 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
               )}
               {(live.total || 0) > 0 && (
                 <div className="mt-4 mx-auto text-left rounded-xl p-4" style={{ background: P.card, border: `1px solid ${P.line}`, maxWidth: 280 }}>
-                  <OrderPriceBreakdown order={live} t={t} />
+                  <OrderPriceBreakdown order={live} t={t} lang={lang} />
+                </div>
+              )}
+              {(live.bonusPending || live.bonusEarned || 0) > 0 && (
+                <div className="mt-3 mx-auto rounded-lg px-4 py-3 text-sm font-extrabold"
+                  style={{ background: "#E9F1DF", color: "#3F7A2E", border: "1px solid #BFD8A8", maxWidth: 300 }}>
+                  {live.status === "done"
+                    ? `+${fmt(live.bonusEarned || 0)} ${L3(lang, "bonuses added", "бонусов начислено", "бонус есептелді")}`
+                    : `+${fmt(live.bonusPending || 0)} ${L3(lang, "after completion", "после завершения", "аяқталғаннан кейін")}`}
                 </div>
               )}
               {live.type === "booking" && live.callConfirmed && (
@@ -2167,7 +2422,7 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                     {refreshingOrder ? (lang === "en" ? "Refreshing…" : "Обновляем…") : t("refresh")}
                   </button>
                 </div>
-                <button onClick={() => { resetAfterOrder(); setStep("cart"); setTable(""); setComment(""); setAddress(""); setLocation(null); setSchedMode("asap"); setSchedH(""); setSchedM(""); setConsent(false); setConsentError(false); setConsentShake(false); }}
+                <button onClick={() => { resetAfterOrder(); setStep("cart"); setTable(""); setComment(""); setAddress(""); setLocation(null); setSchedMode("asap"); setSchedH(""); setSchedM(""); setUseBonus(false); setBonusToUse(0); setConsent(false); setConsentError(false); setConsentShake(false); }}
                   className="font-bold text-sm px-4 py-2 rounded-full" style={{ background: P.ink, color: "#fff" }}>
                   {t("newOrder")}
                 </button>
@@ -2181,7 +2436,9 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
         {step !== "done" && (entries.length > 0 || (booking && step === "checkout")) && (
           <div className="px-5 py-4" style={{ borderTop: `1px solid ${P.line}`, background: P.card }}>
             {subtotal > 0 && (
-              <div className="mb-3"><PriceBreakdown subtotal={subtotal} t={t} withFee={feeApplies} /></div>
+              <div className="mb-3"><PriceBreakdown subtotal={subtotal} t={t} withFee={feeApplies}
+                deliveryFee={!booking && type === "delivery" && deliveryFee > 0 ? deliveryFee : 0}
+                bonusUsed={bonusUsed} lang={lang} /></div>
             )}
             {step === "cart" ? (
               <button onClick={() => setStep("checkout")} className="w-full py-3 rounded-xl font-extrabold" style={{ background: P.teal, color: "#fff" }}>
@@ -2533,7 +2790,7 @@ function BookingWizard({ open, onClose, lang, t, onProceed, cafeInfo }) {
 
 /* ── guest site ──────────────────────────────────────────────────────── */
 
-function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, cartTotal, goAdmin, lastOrder, orders, openBoard, openPrivacy, cafeInfo }) {
+function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, cartTotal, goAdmin, lastOrder, orders, openBoard, openPrivacy, cafeInfo, loyalty, openBonuses }) {
   const [activeCat, setActiveCat] = useState("all");
   const [q, setQ] = useState("");
   const reducedMotion = useReducedMotion();
@@ -2602,6 +2859,16 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
             <motion.button whileTap={{ scale: 0.95 }} onClick={() => setLang(nextLang(lang))} className="text-xs font-extrabold px-3 py-1.5 rounded-full"
               style={{ background: P.card, border: `1px solid ${P.line}` }}>
               {langCode(lang)}
+            </motion.button>
+            <motion.button whileTap={{ scale: 0.95 }} onClick={openBonuses}
+              aria-label={L3(lang, "Bonuses", "Бонусы", "Бонустар")}
+              title={L3(lang, "Bonuses", "Бонусы", "Бонустар")}
+              className="flex items-center gap-1.5 text-xs font-extrabold px-3 py-2 rounded-full"
+              style={{ background: P.card, border: `1px solid ${P.line}`, color: P.tealD }}>
+              <span aria-hidden="true" className="flex items-center justify-center rounded-full"
+                style={{ width: 18, height: 18, background: P.saff, color: P.ink, fontSize: 10 }}>B</span>
+              <span className="bonus-label">{L3(lang, "Bonuses", "Бонусы", "Бонустар")}</span>
+              {(loyalty?.balance || 0) > 0 && <span>{Number(loyalty.balance).toLocaleString("ru-RU")}</span>}
             </motion.button>
             <motion.button ref={cartTargetRef} data-cart-target="true" animate={cartControls} whileTap={{ scale: 0.96 }} onClick={openCart}
               className="flex items-center gap-2 text-sm font-extrabold px-4 py-2 rounded-full" style={{ background: P.ink, color: "#fff" }}>
@@ -3068,7 +3335,7 @@ function OrderCard({ o, lang, onStatus, onEditItems, onAckCall, onBookingEnd }) 
         ))}
         {o.items.length > 0 && (
           <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${P.line}` }}>
-            <OrderPriceBreakdown order={o} t={(k) => tr(lang, k)} />
+            <OrderPriceBreakdown order={o} t={(k) => tr(lang, k)} lang={lang} />
           </div>
         )}
         {o.comment && <div className="text-xs mt-2 font-bold" style={{ color: P.tealD }}>{o.comment}</div>}
@@ -3287,7 +3554,7 @@ function OrderItemEditor({ order, menu, lang, onClose, onSave }) {
         </div>
 
         <div className="p-3 rounded-lg mb-4" style={{ background: P.bone }}>
-          <OrderPriceBreakdown order={{ subtotal, serviceFee: fee, deliveryFee, total: grandTotal }} t={(k) => tr(lang, k)} />
+          <OrderPriceBreakdown order={{ subtotal, serviceFee: fee, deliveryFee, total: grandTotal }} t={(k) => tr(lang, k)} lang={lang} />
         </div>
 
         <button onClick={() => { onSave(order.id, items, grandTotal); onClose(); }} className="w-full py-3 rounded-xl font-extrabold" style={{ background: P.teal, color: "#fff" }}>
@@ -3400,6 +3667,152 @@ function TableBusyEditor({ lang }) {
         ))}
       </div>
     </section>
+  );
+}
+
+function LoyaltyAdmin({ lang }) {
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const L = (en, ru, kz) => L3(lang, en, ru, kz);
+  const load = useCallback(async () => {
+    setLoading(true);
+    const data = await apiGetAdminLoyalty();
+    setReport(data);
+    setLoading(false);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const accounts = (report?.accounts || []).filter((account) =>
+    account.phone.includes(query.replace(/\D/g, "")));
+  const submitAdjustment = async () => {
+    const value = Number(amount);
+    if (!editing || !Number.isInteger(value) || value === 0) return;
+    setSaving(true);
+    const result = await apiAdjustLoyalty(editing.id, value, note);
+    setSaving(false);
+    if (!result) {
+      alert(L("The adjustment was not saved.", "Корректировка не сохранена.", "Түзету сақталмады."));
+      return;
+    }
+    setEditing(null);
+    setAmount("");
+    setNote("");
+    await load();
+  };
+  const resetAccess = async (account) => {
+    const confirmed = window.confirm(L(
+      `Confirm that you verified the customer's identity. Reset device access for +${account.phone}?`,
+      `Подтвердите, что вы проверили личность клиента. Сбросить доступ устройства для +${account.phone}?`,
+      `Клиенттің жеке басын тексергеніңізді растаңыз. +${account.phone} үшін құрылғы рұқсатын қалпына келтіру керек пе?`,
+    ));
+    if (!confirmed) return;
+    const ok = await apiResetLoyaltyAccess(account.id);
+    if (!ok) alert(L("Access was not reset.", "Доступ не сброшен.", "Рұқсат қалпына келтірілмеді."));
+  };
+
+  if (loading && !report) {
+    return <div className="py-16 text-center text-sm font-bold" style={{ color: P.sub }}>{L("Loading bonuses...", "Загружаем бонусы...", "Бонустар жүктелуде...")}</div>;
+  }
+  if (!report) {
+    return (
+      <div className="py-16 text-center">
+        <div className="font-bold" style={{ color: P.red }}>{L("Could not load bonuses.", "Не удалось загрузить бонусы.", "Бонустарды жүктеу мүмкін болмады.")}</div>
+        <button type="button" onClick={load} className="mt-4 px-4 py-2 rounded-full font-bold" style={{ background: P.ink, color: "#fff" }}>
+          {L("Retry", "Повторить", "Қайталау")}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div>
+          <h2 className="font-extrabold" style={{ fontFamily: FONT_DISPLAY, fontSize: 24, color: P.txt }}>
+            {L("Customer bonuses", "Бонусы клиентов", "Клиент бонустары")}
+          </h2>
+          <div className="text-sm mt-1" style={{ color: P.sub }}>
+            {report.settings.earnPercent}% · {L("payment limit", "лимит оплаты", "төлем шегі")} {report.settings.redeemPercent}% · {report.settings.expiryDays} {L("days", "дней", "күн")}
+          </div>
+        </div>
+        <button type="button" onClick={load} disabled={loading} title={L("Refresh", "Обновить", "Жаңарту")}
+          className="w-10 h-10 rounded-full font-extrabold" style={{ background: P.card, border: `1px solid ${P.line}`, color: P.txt }}>
+          ↻
+        </button>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        {[
+          [L("Customers", "Клиенты", "Клиенттер"), report.summary.customers],
+          [L("Available", "Доступно", "Қолжетімді"), fmt(report.summary.available)],
+          [L("Issued", "Начислено", "Есептелді"), fmt(report.summary.issued)],
+          [L("Redeemed", "Списано", "Жұмсалды"), fmt(report.summary.redeemed)],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-lg p-4" style={{ background: P.card, border: `1px solid ${P.line}` }}>
+            <div className="text-xs font-bold" style={{ color: P.sub }}>{label}</div>
+            <div className="font-extrabold mt-1" style={{ color: P.txt, fontSize: 20 }}>{value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mb-3">
+        <input value={query} onChange={(event) => setQuery(event.target.value)}
+          inputMode="tel" placeholder={L("Search by phone", "Поиск по телефону", "Телефон бойынша іздеу")}
+          className="w-full rounded-lg px-4 py-3 text-sm outline-none"
+          style={{ background: P.card, border: `1px solid ${P.line}`, color: P.txt }} />
+      </div>
+      <div style={{ background: P.card, border: `1px solid ${P.line}`, borderRadius: 8, overflow: "hidden" }}>
+        {accounts.length === 0 && (
+          <div className="p-8 text-center text-sm" style={{ color: P.sub }}>{L("No customers found.", "Клиенты не найдены.", "Клиенттер табылмады.")}</div>
+        )}
+        {accounts.map((account) => (
+          <div key={account.id} className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3"
+            style={{ borderTop: `1px solid ${P.line}` }}>
+            <div className="flex-1 min-w-0">
+              <div className="font-extrabold" style={{ color: P.txt }}>+{account.phone}</div>
+              <div className="text-xs mt-1" style={{ color: P.sub }}>
+                {L("Available", "Доступно", "Қолжетімді")}: {fmt(account.balance)} · {L("Issued", "Начислено", "Есептелді")}: {fmt(account.issued)}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => { setEditing(account); setAmount(""); setNote(""); }}
+                className="px-3 py-2 rounded-lg text-xs font-bold" style={{ background: P.ink, color: "#fff" }}>
+                {L("Adjust", "Изменить", "Өзгерту")}
+              </button>
+              <button type="button" onClick={() => resetAccess(account)} title={L("Reset device access", "Сбросить доступ устройства", "Құрылғы рұқсатын қалпына келтіру")}
+                className="w-9 h-9 rounded-lg text-sm font-bold" style={{ background: "#FAE5E3", color: P.red }}>↺</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <AnimatePresence>
+        {editing && (
+          <motion.div className="fixed inset-0 z-[80] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ background: "rgba(14,22,32,.58)" }}>
+            <motion.div className="w-full max-w-md rounded-lg p-5" initial={{ y: 10 }} animate={{ y: 0 }}
+              style={{ background: P.card }}>
+              <div className="font-extrabold text-lg" style={{ color: P.txt }}>+{editing.phone}</div>
+              <div className="text-xs mt-1 mb-4" style={{ color: P.sub }}>
+                {L("Use a positive number to add and a negative number to remove.", "Плюс начисляет, минус списывает.", "Оң сан қосады, теріс сан шегереді.")}
+              </div>
+              <Field label={L("Amount", "Сумма", "Сома")} value={amount} onChange={setAmount} ph="+500 / -500" />
+              <div className="mt-3"><Field label={L("Audit note", "Причина", "Себеп")} value={note} onChange={setNote} ph={L("Required for staff records", "Для истории операций", "Операциялар тарихы үшін")} /></div>
+              <div className="flex gap-2 mt-5">
+                <button type="button" onClick={() => setEditing(null)} className="flex-1 py-3 rounded-lg font-bold"
+                  style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt }}>{L("Cancel", "Отмена", "Бас тарту")}</button>
+                <button type="button" onClick={submitAdjustment} disabled={saving || !note.trim() || !Number.isInteger(Number(amount)) || Number(amount) === 0}
+                  className="flex-1 py-3 rounded-lg font-extrabold"
+                  style={{ background: P.teal, color: "#fff", opacity: saving ? 0.6 : 1 }}>{saving ? "..." : L("Save", "Сохранить", "Сақтау")}</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
@@ -3674,7 +4087,7 @@ const handleSaveItems = async (id, items, total) => {
         </div>
         <nav aria-label={L("Admin sections", "Разделы админки")}
           className="max-w-5xl mx-auto px-4 pb-3 grid grid-cols-3 gap-2 md:flex md:items-center">
-          {[["orders", L("Orders", "Заказы")], ["menu", L("Menu", "Меню")], ["tables", L("Tables", "Столики")], ["stats", L("Analytics", "Аналитика")], ["finance", L("Finance", "Финансы")], ["schedule", L("Schedule", "График")]].map(([id, label]) => (
+          {[["orders", L("Orders", "Заказы")], ["menu", L("Menu", "Меню")], ["tables", L("Tables", "Столики")], ["loyalty", L("Bonuses", "Бонусы")], ["stats", L("Analytics", "Аналитика")], ["finance", L("Finance", "Финансы")], ["schedule", L("Schedule", "График")]].map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)} className="relative min-w-0 text-xs md:text-sm font-bold px-2 md:px-4 py-2 rounded-full whitespace-nowrap"
               style={{ background: tab === id ? P.teal : "rgba(255,255,255,.08)", color: "#fff" }}>
               {label}
@@ -3713,6 +4126,7 @@ const handleSaveItems = async (id, items, total) => {
       )}
 
       <main className="max-w-5xl mx-auto px-4 py-6">
+        {tab === "loyalty" && <LoyaltyAdmin lang={lang} />}
         {tab === "orders" && (
           <>
             <div className="flex gap-2 flex-wrap mb-4 items-center">
@@ -4197,8 +4611,18 @@ export default function App() {
   const [cafeInfo, setCafeInfo] = useState({ isOpen: true, hours: {} });
   const [boardOpen, setBoardOpen] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [bonusOpen, setBonusOpen] = useState(false);
+  const [loyalty, setLoyalty] = useState(null);
+  const [loyaltyLoading, setLoyaltyLoading] = useState(false);
 
   const t = useCallback((k) => T[lang][k] || k, [lang]);
+  const refreshLoyalty = useCallback(async () => {
+    setLoyaltyLoading(true);
+    const result = await apiGetLoyalty();
+    setLoyalty(result);
+    setLoyaltyLoading(false);
+    return result;
+  }, []);
 
     useEffect(() => {
     (async () => {
@@ -4214,8 +4638,9 @@ export default function App() {
       } catch (e) {}
       const status = await apiGetCafeStatus();
       if (status) setCafeInfo(status);
+      await refreshLoyalty();
     })();
-  }, []);
+  }, [refreshLoyalty]);
 
   // Re-check open/closed periodically so a tab left open across closing
   // time (e.g. past 01:00) reflects it without needing a manual reload.
@@ -4286,13 +4711,20 @@ export default function App() {
       ? crypto.randomUUID()
       : Date.now().toString(36) + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12));
     const order = { id: oid, num, ts: Date.now(), status: payload.status || "new", ...payload };
-    const ok = await apiPlaceOrder(order);
-    if (!ok) return null; // caller shows the error; nothing is stored locally
-    setOrders((prev) => [order, ...prev]);
-    setLastOrder(order);
-    try { localStorage.setItem("aspan-last-order", JSON.stringify({ id: order.id, num: order.num, ts: order.ts })); } catch (e) {}
+    const result = await apiPlaceOrder(order);
+    if (!result) return null; // caller shows the error; nothing is stored locally
+    if (result.loyalty?.token) {
+      localStorage.setItem(LOYALTY_TOKEN_KEY, result.loyalty.token);
+    }
+    if (result.loyalty && result.loyalty.linked !== false) {
+      setLoyalty(result.loyalty);
+    }
+    const savedOrder = { ...order, ...(result.order || {}) };
+    setOrders((prev) => [savedOrder, ...prev]);
+    setLastOrder(savedOrder);
+    try { localStorage.setItem("aspan-last-order", JSON.stringify({ id: savedOrder.id, num: savedOrder.num, ts: savedOrder.ts })); } catch (e) {}
     setCart({});
-    return order; // ← return so CartDrawer can get the id
+    return savedOrder;
   }, []);
 
   const updateStatus = useCallback(async (id, status, extra) => {
@@ -4363,6 +4795,7 @@ export default function App() {
         .consent-shake { animation: consentShake .5s cubic-bezier(.36,.07,.19,.97); }
         .consent-box:focus-within .consent-tick { outline: 2px solid #742427; outline-offset: 2px; }
         .brand-wordmark { display: none; }
+        @media (max-width: 520px) { .bonus-label { display: none; } }
         @media (min-width: 640px) { .brand-wordmark { display: block; } }
       `}</style>
 
@@ -4372,7 +4805,10 @@ export default function App() {
             openCart={() => setCartOpen(true)} cartCount={cartCount} cartTotal={cartTotal}
             goAdmin={() => setView("admin")} lastOrder={lastOrder} orders={orders}
             openBoard={() => setBoardOpen(true)}
-            openPrivacy={() => setPrivacyOpen(true)} />
+            openPrivacy={() => setPrivacyOpen(true)}
+            loyalty={loyalty} openBonuses={() => setBonusOpen(true)} />
+          <LoyaltyDrawer open={bonusOpen} onClose={() => setBonusOpen(false)}
+            loyalty={loyalty} loading={loyaltyLoading} refresh={refreshLoyalty} lang={lang} />
           <OrdersBoard open={boardOpen} onClose={() => setBoardOpen(false)} orders={orders}
             lang={lang} t={t} refreshOrders={refreshOrders} />
           <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cart} menu={menu}
@@ -4380,7 +4816,8 @@ export default function App() {
             orders={orders} refreshOrders={refreshOrders} resetAfterOrder={() => setLastOrder(lastOrder)}
             kaspiUrl={safeKaspiUrl(cafeInfo && cafeInfo.kaspiPayUrl)}
             isClosed={cafeInfo ? cafeInfo.effectiveOpen === false : false}
-            openPrivacy={() => setPrivacyOpen(true)} cafeInfo={cafeInfo} />
+            openPrivacy={() => setPrivacyOpen(true)} cafeInfo={cafeInfo}
+            loyalty={loyalty} refreshLoyalty={refreshLoyalty} />
           <PrivacyPolicy open={privacyOpen} onClose={() => setPrivacyOpen(false)} />
         </>
       ) : authed ? (

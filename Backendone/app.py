@@ -31,6 +31,20 @@ CORS(app,
      supports_credentials=True)
 
 from db import get_db
+from loyalty import (
+    LoyaltyError,
+    account_by_token,
+    admin_report as loyalty_admin_report,
+    adjust_account as adjust_loyalty_account,
+    apply_redemption,
+    award_order,
+    earn_amount,
+    install_schema as install_loyalty_schema,
+    prepare_account,
+    reset_access as reset_loyalty_access,
+    restore_order_redemption,
+    snapshot as loyalty_snapshot,
+)
 from sales_history import aggregate_sales_history
 
 def init_db():
@@ -121,6 +135,7 @@ def init_db():
         VALUES (1, 0, 0, 0, '[]'::jsonb)
         ON CONFLICT (id) DO NOTHING
     """)
+    install_loyalty_schema(conn)
     conn.commit()
     conn.close()
 
@@ -152,6 +167,72 @@ def auth_check():
     # panel (tokens expire after 12h; without this check the panel opened
     # with a dead token and every write silently failed with 401).
     return jsonify({"ok": True})
+
+
+def loyalty_token():
+    return request.headers.get("X-Loyalty-Token", "").strip()
+
+
+@app.route("/api/loyalty/me", methods=["GET"])
+@limiter.limit("60 per minute")
+def get_loyalty_account():
+    conn = get_db()
+    account = account_by_token(conn, loyalty_token())
+    if not account:
+        conn.close()
+        return jsonify({"error": "loyalty_login_required"}), 401
+    try:
+        result = loyalty_snapshot(conn, account["id"])
+    except LoyaltyError as exc:
+        conn.close()
+        return jsonify({"error": exc.code}), 404
+    conn.close()
+    return jsonify(result)
+
+
+@app.route("/api/admin/loyalty", methods=["GET"])
+@require_owner
+def get_loyalty_admin():
+    conn = get_db()
+    result = loyalty_admin_report(conn)
+    conn.close()
+    return jsonify(result)
+
+
+@app.route("/api/admin/loyalty/<account_id>/adjust", methods=["POST"])
+@require_owner
+def adjust_loyalty_admin(account_id):
+    body = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        balance = adjust_loyalty_account(
+            conn, account_id, body.get("amount"), body.get("note")
+        )
+        conn.commit()
+    except LoyaltyError as exc:
+        conn.rollback()
+        conn.close()
+        status = 404 if exc.code == "loyalty_not_found" else 400
+        return jsonify({"error": exc.code}), status
+    conn.close()
+    return jsonify({"ok": True, "balance": balance})
+
+
+@app.route("/api/admin/loyalty/<account_id>/reset-access", methods=["POST"])
+@require_owner
+def reset_loyalty_admin_access(account_id):
+    conn = get_db()
+    try:
+        reset_loyalty_access(conn, account_id)
+        conn.commit()
+    except LoyaltyError as exc:
+        conn.rollback()
+        conn.close()
+        return jsonify({"error": exc.code}), 404
+    conn.close()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/menu", methods=["GET"])
 def get_menu():
     conn = get_db()
@@ -826,7 +907,7 @@ def normalize_order_request(body):
         )
         order["phone"] = _clean_text(
             body.get("phone"), "invalid_phone", 50,
-            required=order_type in {"pickup", "delivery"},
+            required=order_type in {"table", "pickup", "delivery"},
         )
         order["table"] = _clean_text(
             body.get("table"), "invalid_table", 30,
@@ -961,6 +1042,11 @@ def place_order():
 
     try:
         order = normalize_order_request(body)
+        if conn.execute(
+            "SELECT 1 FROM orders WHERE id = %s", (order["id"],)
+        ).fetchone():
+            conn.close()
+            return jsonify({"error": "duplicate_order"}), 409
         order["items"] = authoritative_order_items(
             conn,
             body.get("items"),
@@ -1024,28 +1110,67 @@ def place_order():
     order["subtotal"] = subtotal
     order["serviceFee"] = service_fee
     order["deliveryFee"] = delivery_fee
-    order["total"] = grand_total + delivery_fee
+    base_total = grand_total + delivery_fee
+
+    try:
+        account, issued_token, loyalty_authenticated = prepare_account(
+            conn, order["phone"], loyalty_token(), order["ts"]
+        )
+        requested_bonus = body.get("bonusToUse", 0)
+        try:
+            requested_bonus_number = int(requested_bonus or 0)
+        except (TypeError, ValueError):
+            raise LoyaltyError("invalid_bonus_amount") from None
+        if requested_bonus_number > 0 and not loyalty_authenticated:
+            raise LoyaltyError("loyalty_login_required")
+        bonus_used = apply_redemption(
+            conn,
+            account["id"],
+            order["id"],
+            requested_bonus_number,
+            subtotal,
+            order["ts"],
+        )
+    except LoyaltyError as exc:
+        conn.rollback()
+        conn.close()
+        status = 401 if exc.code == "loyalty_login_required" else 400
+        return jsonify({"error": exc.code}), status
+
+    order["loyaltyAccountId"] = account["id"]
+    order["bonusUsed"] = bonus_used
+    order["bonusPending"] = earn_amount(subtotal, bonus_used)
+    order["total"] = max(0, base_total - bonus_used)
     order["fee"] = platform_commission(order["total"])
     order["feeAccrued"] = False
 
     if order["status"] != "awaiting_confirmation":
         accrue_order_commission(conn, order)
 
-    if conn.execute(
-        "SELECT 1 FROM orders WHERE id = %s", (order["id"],)
-    ).fetchone():
-        conn.close()
-        return jsonify({"error": "duplicate_order"}), 409
-
     conn.execute(
         "INSERT INTO orders (id, num, ts, status, payment_id, data) VALUES (%s, %s, %s, %s, %s, %s)",
         (order["id"], order["num"], order["ts"], order["status"],
          order.get("payment_id"), json.dumps(order))
     )
+    loyalty_result = (
+        loyalty_snapshot(conn, account["id"], issued_token, order["ts"])
+        if loyalty_authenticated
+        else {"linked": False}
+    )
     conn.commit()
 
     conn.close()
-    return jsonify({"ok": True})
+    return jsonify({
+        "ok": True,
+        "order": {
+            "id": order["id"],
+            "num": order["num"],
+            "total": order["total"],
+            "bonusUsed": order["bonusUsed"],
+            "bonusPending": order["bonusPending"],
+        },
+        "loyalty": loyalty_result,
+    })
 
 
 # Customer-facing message created when the status changes (website notifications)
@@ -1070,8 +1195,12 @@ def order_notification_message(status, prep_minutes=None):
 @app.route("/api/orders/<order_id>", methods=["PUT"])
 @require_owner
 def update_order(order_id):
-    body = request.get_json()
-    new_status = body["status"]
+    body = request.get_json(silent=True) or {}
+    new_status = body.get("status")
+    if new_status not in {
+        "awaiting_confirmation", "new", "cooking", "ready", "done", "cancelled"
+    }:
+        return jsonify({"error": "invalid_status"}), 400
     conn = get_db()
     row = conn.execute(
         "SELECT data FROM orders WHERE id = %s", (order_id,)
@@ -1081,6 +1210,9 @@ def update_order(order_id):
         return jsonify({"error": "Not found"}), 404
     order = row["data"]
     old_status = order.get("status")
+    if old_status in {"done", "cancelled"} and new_status != old_status:
+        conn.close()
+        return jsonify({"error": "terminal_order"}), 409
     order["status"] = new_status
 
     # Preparation window + per-step timestamps for the customer timeline
@@ -1100,6 +1232,12 @@ def update_order(order_id):
         order["completed_at"] = now_ms
     elif new_status == "cancelled":
         order["cancelled_at"] = now_ms
+
+    if new_status != old_status and new_status == "done":
+        award_order(conn, order, now_ms)
+    elif new_status != old_status and new_status == "cancelled":
+        restore_order_redemption(conn, order, now_ms)
+        order["bonusPending"] = 0
 
     # Payment-confirm now jumps straight to "cooking" (one press, with the
     # prep-time estimate attached) — but the old →"new" path still counts.
@@ -1458,6 +1596,9 @@ def edit_order_items(order_id):
         return jsonify({"error": "Not found"}), 404
 
     old_order = row["data"]
+    if int(old_order.get("bonusUsed") or 0) > 0:
+        conn.close()
+        return jsonify({"error": "bonus_order_locked"}), 409
     # Commission follows the final amount the customer pays. Legacy orders
     # may not have "fee", so derive the old value from total.
     old_total = old_order.get("total", 0)
