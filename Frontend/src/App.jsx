@@ -2467,16 +2467,15 @@ function CartDrawer({
                     {L3(lang, "Website bonuses", "Бонусы сайта", "Сайт бонустары")}
                   </div>
                   {loyalty ? (
-                    <div className="mt-3 rounded-xl p-3" style={{ background: P.bone, border: `1px solid ${P.line}` }}>
+                    <div className="mt-3 rounded-xl p-3.5" style={{ background: P.bone, border: `1px solid ${P.line}` }}>
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <div className="text-xs font-extrabold" style={{ color: P.green }}>
-                            {activeLoyalty ? "✓ " : ""}{activeLoyalty
-                              ? L3(lang, "Bonus ID connected", "Бонусный ID подключён", "Бонус ID қосылды")
-                              : L3(lang, "Not used for this order", "Не используется в этом заказе", "Бұл тапсырыста қолданылмайды")}
+                            ✓ {L3(lang, "Bonus ID connected", "Бонусный ID подключён", "Бонус ID қосылды")}
                           </div>
-                          <div className="text-xs mt-1" style={{ color: P.sub }}>
-                            {loyalty.maskedCode} · {L3(lang, "Available", "Доступно", "Қолжетімді")}: {fmt(loyalty.balance || 0)}
+                          <div className="text-sm font-extrabold mt-1 tracking-wide" style={{ color: P.txt }}>{loyalty.maskedCode}</div>
+                          <div className="text-xs mt-0.5" style={{ color: P.sub }}>
+                            {L3(lang, "Available", "Доступно", "Қолжетімді")}: {fmt(loyalty.balance || 0)}
                           </div>
                         </div>
                         <button type="button" onClick={() => {
@@ -2484,20 +2483,11 @@ function CartDrawer({
                           setLoyaltyMode("existing");
                           setUseBonus(false);
                           setBonusToUse(0);
-                        }} className="text-xs font-bold underline" style={{ color: P.tealD }}>
-                          {L3(lang, "Use another", "Другой ID", "Басқа ID")}
+                        }} className="shrink-0 rounded-lg px-3 py-2 text-xs font-extrabold"
+                          style={{ background: P.card, border: `1px solid ${P.line}`, color: P.tealD }}>
+                          {L3(lang, "Another ID", "Другой ID", "Басқа ID")}
                         </button>
                       </div>
-                      <label className="flex items-center gap-2 text-xs font-bold mt-3" style={{ color: P.txt }}>
-                        <input type="checkbox" checked={activeLoyalty} onChange={(event) => {
-                          setLoyaltyMode(event.target.checked ? "connected" : "none");
-                          if (!event.target.checked) {
-                            setUseBonus(false);
-                            setBonusToUse(0);
-                          }
-                        }} />
-                        {L3(lang, "Use this ID for the order", "Использовать ID в заказе", "ID-ны тапсырыста қолдану")}
-                      </label>
                     </div>
                   ) : (
                     <div className="mt-3">
@@ -2551,33 +2541,38 @@ function CartDrawer({
                     </div>
                   )}
                   {activeLoyalty && bonusLimit > 0 && (
-                    <label className="flex items-center gap-2 text-xs font-bold mt-3" style={{ color: P.txt }}>
-                      <input type="checkbox" checked={useBonus}
-                        onChange={(event) => {
-                          const checked = event.target.checked;
-                          setUseBonus(checked);
-                          if (checked && !bonusToUse) setBonusToUse(bonusLimit);
-                        }} />
-                      {L3(lang, "Use bonuses", "Списать бонусы", "Бонустарды жұмсау")}
-                    </label>
+                    <button type="button" onClick={() => {
+                      const next = !useBonus;
+                      setUseBonus(next);
+                      if (next && !bonusToUse) setBonusToUse(bonusLimit);
+                    }} className="w-full mt-3 rounded-xl py-3 text-sm font-extrabold flex items-center justify-center gap-2"
+                      style={{
+                        background: useBonus ? P.teal : P.bone,
+                        color: useBonus ? "#fff" : P.txt,
+                        border: `1px solid ${useBonus ? P.teal : P.line}`,
+                      }}>
+                      {useBonus ? "✓ " : ""}{L3(lang, "Use bonuses", "Списать бонусы", "Бонустарды жұмсау")}
+                    </button>
                   )}
                   {activeLoyalty && useBonus && bonusLimit > 0 && (
-                    <div className="mt-4">
-                      <div className="flex items-center gap-3">
-                        <input type="range" min="0" max={bonusLimit} step="1" value={bonusUsed}
-                          aria-label={L3(lang, "Bonuses to use", "Сколько бонусов списать", "Жұмсалатын бонустар")}
-                          onChange={(event) => setBonusToUse(Number(event.target.value))}
-                          className="flex-1" style={{ accentColor: P.teal }} />
-                        <input type="number" min="0" max={bonusLimit} step="1" value={bonusUsed}
-                          onChange={(event) => setBonusToUse(clampBonusUse(
-                            event.target.value, subtotal, loyalty?.balance || 0, loyalty?.redeemPercent || 20,
-                            loyalty?.maxRedemptionPerOrder || 50_000,
-                          ))}
-                          className="w-24 rounded-lg px-2 py-2 text-sm font-extrabold text-right outline-none"
-                          style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt }} />
+                    <div className="mt-3 rounded-xl p-3.5" style={{ background: P.bone, border: `1px solid ${P.line}` }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold" style={{ color: P.sub }}>
+                          {L3(lang, "Bonuses to use", "Списать бонусов", "Жұмсалатын бонус")}
+                        </span>
+                        <span className="text-base font-extrabold" style={{ color: P.teal }}>{fmt(bonusUsed)}</span>
                       </div>
-                      <div className="text-xs mt-2" style={{ color: P.sub }}>
-                        {L3(lang, "Maximum for this order", "Максимум для этого заказа", "Осы тапсырыс үшін максимум")}: {fmt(bonusLimit)}
+                      <input type="range" min="0" max={bonusLimit} step="1" value={bonusUsed}
+                        aria-label={L3(lang, "Bonuses to use", "Сколько бонусов списать", "Жұмсалатын бонустар")}
+                        onChange={(event) => setBonusToUse(Number(event.target.value))}
+                        className="w-full" style={{ accentColor: P.teal }} />
+                      <div className="flex items-center justify-between mt-1.5">
+                        <button type="button" onClick={() => setBonusToUse(0)}
+                          className="text-xs font-bold" style={{ color: P.sub }}>0 ₸</button>
+                        <button type="button" onClick={() => setBonusToUse(bonusLimit)}
+                          className="text-xs font-extrabold" style={{ color: P.tealD }}>
+                          {L3(lang, "Max", "Максимум", "Максимум")}: {fmt(bonusLimit)}
+                        </button>
                       </div>
                     </div>
                   )}
