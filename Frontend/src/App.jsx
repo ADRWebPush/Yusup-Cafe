@@ -5,10 +5,14 @@ import "leaflet/dist/leaflet.css";
 import { AnimatePresence, LayoutGroup, motion, useAnimationControls, useReducedMotion } from "motion/react";
 import { salesTotalsForPeriods } from "./adminAnalytics.js";
 import {
-  LOYALTY_TOKEN_KEY,
+  LEGACY_LOYALTY_TOKEN_KEY,
+  LOYALTY_CODE_KEY,
+  LOYALTY_DEVICE_KEY,
   bonusEarnPreview,
   bonusSpendLimit,
   clampBonusUse,
+  isValidLoyaltyCode,
+  normalizeLoyaltyCodeInput,
 } from "./loyalty.js";
 import {
   MOTION,
@@ -789,7 +793,7 @@ async function apiPlaceOrder(order) {
   try {
     const r = await fetch(`${API}/api/orders`, {
       method: "POST",
-      headers: loyaltyHeaders(),
+      headers: loyaltyHeaders(undefined, order.loyaltyMode !== "none"),
       body: JSON.stringify(order),
     });
     if (!r.ok) { try { LAST_ORDER_ERROR = (await r.json()).error || null; } catch (e) {} }
@@ -797,23 +801,69 @@ async function apiPlaceOrder(order) {
   }
   catch (e) { return null; }
 }
-function loyaltyHeaders() {
-  const token = localStorage.getItem(LOYALTY_TOKEN_KEY);
-  return token
-    ? { "X-Loyalty-Token": token, "Content-Type": "application/json" }
-    : { "Content-Type": "application/json" };
+function loyaltyDeviceId() {
+  let id = localStorage.getItem(LOYALTY_DEVICE_KEY);
+  if (!id) {
+    id = (typeof crypto !== "undefined" && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(LOYALTY_DEVICE_KEY, id);
+  }
+  return id;
 }
-async function apiGetLoyalty() {
-  const token = localStorage.getItem(LOYALTY_TOKEN_KEY);
-  if (!token) return null;
+
+function loyaltyHeaders(codeOverride, includeStored = true) {
+  const code = codeOverride || (includeStored ? localStorage.getItem(LOYALTY_CODE_KEY) : null);
+  const legacyToken = !code && includeStored ? localStorage.getItem(LEGACY_LOYALTY_TOKEN_KEY) : null;
+  return {
+    ...(code ? { "X-Loyalty-Code": code } : {}),
+    ...(legacyToken ? { "X-Loyalty-Token": legacyToken } : {}),
+    "X-Loyalty-Device": loyaltyDeviceId(),
+    "Content-Type": "application/json",
+  };
+}
+
+function saveLoyaltyCode(code) {
+  if (!isValidLoyaltyCode(code)) return false;
+  localStorage.setItem(LOYALTY_CODE_KEY, code);
+  localStorage.removeItem(LEGACY_LOYALTY_TOKEN_KEY);
+  return true;
+}
+
+async function apiGetLoyalty(codeOverride) {
+  const hasStoredCredential = localStorage.getItem(LOYALTY_CODE_KEY)
+    || localStorage.getItem(LEGACY_LOYALTY_TOKEN_KEY);
+  if (!codeOverride && !hasStoredCredential) return null;
   try {
     const r = await fetch(`${API}/api/loyalty/me`, {
-      headers: { "X-Loyalty-Token": token },
+      headers: loyaltyHeaders(codeOverride),
       cache: "no-store",
     });
-    if (r.status === 401) localStorage.removeItem(LOYALTY_TOKEN_KEY);
-    return r.ok ? await r.json() : null;
-  } catch (e) { return null; }
+    if (!r.ok) {
+      if (!codeOverride && r.status === 401) {
+        localStorage.removeItem(LOYALTY_CODE_KEY);
+        localStorage.removeItem(LEGACY_LOYALTY_TOKEN_KEY);
+      }
+      return null;
+    }
+    const result = await r.json();
+    if (result.code) saveLoyaltyCode(result.code);
+    return result;
+  } catch { return null; }
+}
+
+async function apiRotateLoyalty() {
+  try {
+    const r = await fetch(`${API}/api/loyalty/rotate`, {
+      method: "POST",
+      headers: loyaltyHeaders(),
+      body: "{}",
+    });
+    if (!r.ok) return null;
+    const result = await r.json();
+    if (!saveLoyaltyCode(result.code)) return null;
+    return result;
+  } catch { return null; }
 }
 async function apiGetAdminLoyalty() {
   try {
@@ -833,16 +883,6 @@ async function apiAdjustLoyalty(accountId, amount, note) {
     });
     return r.ok ? await r.json() : null;
   } catch (e) { return null; }
-}
-async function apiResetLoyaltyAccess(accountId) {
-  try {
-    const r = await fetch(`${API}/api/admin/loyalty/${encodeURIComponent(accountId)}/reset-access`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: "{}",
-    });
-    return r.ok;
-  } catch (e) { return false; }
 }
 // Client-side mirror of the backend allowlist: only ever open Kaspi domains.
 const safeKaspiUrl = (u) =>
@@ -1666,13 +1706,66 @@ function OrdersBoard({ open, onClose, orders, lang, t, refreshOrders }) {
 
 /* ── guest: cart drawer (cart → checkout → confirmation) ─────────────── */
 
-function LoyaltyDrawer({ open, onClose, loyalty, loading, refresh, lang }) {
+function LoyaltyDrawer({
+  open, onClose, loyalty, loyaltyCode, loading, refresh, connectLoyalty,
+  forgetLoyalty, rotateLoyalty, lang,
+}) {
+  const [codeInput, setCodeInput] = useState("");
+  const [working, setWorking] = useState(false);
+  const [message, setMessage] = useState("");
   const eventLabel = (kind) => ({
     earn: L3(lang, "Order reward", "Начисление за заказ", "Тапсырыс бонусы"),
     redeem: L3(lang, "Used for an order", "Использовано в заказе", "Тапсырысқа жұмсалды"),
     restore: L3(lang, "Returned after cancellation", "Возврат после отмены", "Бас тартудан кейін қайтарылды"),
     adjustment: L3(lang, "Cafe adjustment", "Корректировка кафе", "Кафе түзетуі"),
   }[kind] || kind);
+  const copyCode = async () => {
+    if (!loyaltyCode) return;
+    try {
+      await navigator.clipboard.writeText(loyaltyCode);
+      setMessage(L3(lang, "Bonus ID copied.", "Бонусный ID скопирован.", "Бонус ID көшірілді."));
+    } catch {
+      window.prompt(L3(lang, "Copy your bonus ID", "Скопируйте бонусный ID", "Бонус ID көшіріңіз"), loyaltyCode);
+    }
+  };
+  const downloadCode = () => {
+    if (!loyaltyCode) return;
+    const content = L3(
+      lang,
+      `Yusup Cafe bonus ID: ${loyaltyCode}\nKeep this code private. Anyone with it can use your bonuses.`,
+      `Бонусный ID Yusup Cafe: ${loyaltyCode}\nХраните код в секрете. Любой, кто его знает, сможет использовать бонусы.`,
+      `Yusup Cafe бонус ID: ${loyaltyCode}\nКодты құпия сақтаңыз. Оны білетін адам бонустарды пайдалана алады.`,
+    );
+    const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "yusup-cafe-bonus-id.txt";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+  const connect = async () => {
+    if (!isValidLoyaltyCode(codeInput) || working) return;
+    setWorking(true);
+    setMessage("");
+    const result = await connectLoyalty(codeInput);
+    setWorking(false);
+    if (result) setCodeInput("");
+    else setMessage(L3(lang, "Invalid bonus ID.", "Неверный бонусный ID.", "Бонус ID жарамсыз."));
+  };
+  const replaceCode = async () => {
+    if (!window.confirm(L3(
+      lang,
+      "Replace this bonus ID? The old ID will stop working immediately.",
+      "Заменить бонусный ID? Старый ID сразу перестанет работать.",
+      "Бонус ID ауыстырылсын ба? Ескі ID бірден жұмысын тоқтатады.",
+    ))) return;
+    setWorking(true);
+    const result = await rotateLoyalty();
+    setWorking(false);
+    setMessage(result
+      ? L3(lang, "New bonus ID created. Save it now.", "Новый бонусный ID создан. Сохраните его.", "Жаңа бонус ID жасалды. Оны сақтаңыз.")
+      : L3(lang, "Could not replace the bonus ID.", "Не удалось заменить бонусный ID.", "Бонус ID ауыстырылмады."));
+  };
   return (
     <AnimatePresence>
       {open && (
@@ -1706,11 +1799,26 @@ function LoyaltyDrawer({ open, onClose, loyalty, loading, refresh, lang }) {
                   <div className="text-sm mt-2" style={{ color: P.sub }}>
                     {L3(lang, "You receive 3% after the cafe completes your order.", "После завершения заказа кафе начислит 3%.", "Кафе тапсырысты аяқтағаннан кейін 3% есептеледі.")}
                   </div>
+                  <div className="mt-6 text-left rounded-xl p-4" style={{ background: P.card, border: `1px solid ${P.line}` }}>
+                    <label className="text-xs font-extrabold" style={{ color: P.txt }}>
+                      {L3(lang, "Already have a bonus ID?", "Уже есть бонусный ID?", "Бонус ID бар ма?")}
+                    </label>
+                    <input value={codeInput} maxLength={9} autoCapitalize="off" autoCorrect="off" spellCheck={false}
+                      onChange={(event) => setCodeInput(normalizeLoyaltyCodeInput(event.target.value))}
+                      placeholder="12345678!" className="w-full mt-2 rounded-lg px-3 py-3 text-center font-extrabold tracking-widest outline-none"
+                      style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt }} />
+                    <button type="button" onClick={connect} disabled={!isValidLoyaltyCode(codeInput) || working}
+                      className="w-full mt-2 py-3 rounded-lg font-extrabold"
+                      style={{ background: P.teal, color: "#fff", opacity: !isValidLoyaltyCode(codeInput) || working ? 0.5 : 1 }}>
+                      {working ? "…" : L3(lang, "Connect ID", "Подключить ID", "ID қосу")}
+                    </button>
+                    {message && <div role="alert" className="text-xs font-bold mt-2" style={{ color: P.red }}>{message}</div>}
+                  </div>
                 </div>
               ) : (
                 <>
                   <section className="py-5 px-5 rounded-lg" style={{ background: P.ink, color: "#fff" }}>
-                    <div className="text-xs font-bold" style={{ color: "rgba(255,255,255,.65)" }}>{loyalty.phone}</div>
+                    <div className="text-xs font-bold" style={{ color: "rgba(255,255,255,.65)" }}>{loyalty.maskedCode}</div>
                     <div className="mt-2 font-extrabold" style={{ fontFamily: FONT_DISPLAY, fontSize: 36 }}>{fmt(loyalty.balance || 0)}</div>
                     <div className="text-sm font-bold">{L3(lang, "Available", "Доступно", "Қолжетімді")}</div>
                     {(loyalty.pending || 0) > 0 && (
@@ -1718,6 +1826,36 @@ function LoyaltyDrawer({ open, onClose, loyalty, loading, refresh, lang }) {
                         +{fmt(loyalty.pending)} {L3(lang, "after order completion", "после завершения заказа", "тапсырыс аяқталғаннан кейін")}
                       </div>
                     )}
+                  </section>
+                  <section className="my-4 rounded-lg p-4" style={{ background: P.card, border: `1px solid ${P.line}` }}>
+                    <div className="text-xs font-bold" style={{ color: P.sub }}>
+                      {L3(lang, "Your private bonus ID", "Ваш секретный бонусный ID", "Құпия бонус ID")}
+                    </div>
+                    <div className="font-extrabold tracking-widest mt-1" style={{ color: P.txt, fontSize: 20 }}>
+                      {loyaltyCode || loyalty.maskedCode}
+                    </div>
+                    <div className="text-xs mt-2" style={{ color: P.sub }}>
+                      {L3(lang, "Anyone with this ID can spend the bonuses. Keep it private.", "Любой, кто знает ID, сможет списать бонусы. Храните его в секрете.", "Бұл ID-ны білетін адам бонустарды жұмсай алады. Құпия сақтаңыз.")}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-3">
+                      <button type="button" onClick={copyCode} disabled={!loyaltyCode}
+                        className="py-2.5 rounded-lg text-xs font-extrabold" style={{ background: P.ink, color: "#fff", opacity: loyaltyCode ? 1 : 0.5 }}>
+                        {L3(lang, "Copy", "Копировать", "Көшіру")}
+                      </button>
+                      <button type="button" onClick={downloadCode} disabled={!loyaltyCode}
+                        className="py-2.5 rounded-lg text-xs font-extrabold" style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt, opacity: loyaltyCode ? 1 : 0.5 }}>
+                        {L3(lang, "Download", "Скачать", "Жүктеу")}
+                      </button>
+                    </div>
+                    <div className="flex justify-between gap-3 mt-3">
+                      <button type="button" onClick={replaceCode} disabled={working} className="text-xs font-bold underline" style={{ color: P.tealD }}>
+                        {L3(lang, "Replace ID", "Заменить ID", "ID ауыстыру")}
+                      </button>
+                      <button type="button" onClick={forgetLoyalty} className="text-xs font-bold underline" style={{ color: P.red }}>
+                        {L3(lang, "Forget on this device", "Забыть на устройстве", "Бұл құрылғыдан өшіру")}
+                      </button>
+                    </div>
+                    {message && <div className="text-xs font-bold mt-3" style={{ color: P.tealD }}>{message}</div>}
                   </section>
                   <div className="grid grid-cols-3 gap-2 my-4 text-center">
                     {[
@@ -1765,7 +1903,12 @@ function LoyaltyDrawer({ open, onClose, loyalty, loading, refresh, lang }) {
   );
 }
 
-function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, lastOrder, orders, refreshOrders, resetAfterOrder, booking, clearBooking, kaspiUrl, isClosed, openPrivacy, cafeInfo, loyalty, refreshLoyalty }) {
+function CartDrawer({
+  open, onClose, cart, menu, lang, t, setQty, placeOrder, lastOrder, orders,
+  refreshOrders, resetAfterOrder, booking, clearBooking, kaspiUrl, isClosed,
+  openPrivacy, cafeInfo, loyalty, refreshLoyalty, connectLoyalty,
+  forgetLoyalty,
+}) {
   const [step, setStep] = useState("cart");
   const [type, setType] = useState("table");
   const reducedMotion = useReducedMotion();
@@ -1810,6 +1953,11 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
   const [schedM, setSchedM] = useState("");
   const [useBonus, setUseBonus] = useState(false);
   const [bonusToUse, setBonusToUse] = useState(0);
+  const [loyaltyMode, setLoyaltyMode] = useState(() => loyalty ? "connected" : "enroll");
+  const [loyaltyInput, setLoyaltyInput] = useState("");
+  const [connectingLoyalty, setConnectingLoyalty] = useState(false);
+  const [loyaltyMessage, setLoyaltyMessage] = useState("");
+  const [newLoyaltyCode, setNewLoyaltyCode] = useState("");
 
   const clearCheckoutSecurity = useCallback(() => {
     setCaptchaToken("");
@@ -1847,11 +1995,18 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
   const deliveryFee = (!booking && type === "delivery" && location)
     ? deliveryFeeFor(deliveryCfg, location.lat, location.lng)
     : 0;
+  const activeLoyalty = !!loyalty && loyaltyMode !== "none";
   const bonusLimit = !booking
-    ? bonusSpendLimit(subtotal, loyalty?.balance || 0, loyalty?.redeemPercent || 20)
+    ? bonusSpendLimit(
+      subtotal, activeLoyalty ? loyalty?.balance || 0 : 0, loyalty?.redeemPercent || 20,
+      loyalty?.maxRedemptionPerOrder || 50_000,
+    )
     : 0;
   const bonusUsed = useBonus
-    ? clampBonusUse(bonusToUse, subtotal, loyalty?.balance || 0, loyalty?.redeemPercent || 20)
+    ? clampBonusUse(
+      bonusToUse, subtotal, loyalty?.balance || 0, loyalty?.redeemPercent || 20,
+      loyalty?.maxRedemptionPerOrder || 50_000,
+    )
     : 0;
   const grossTotal = subtotal + serviceFee + (deliveryFee > 0 ? deliveryFee : 0);
   const grandTotal = Math.max(0, grossTotal - bonusUsed);
@@ -1859,9 +2014,38 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
   useEffect(() => {
     setBonusToUse((current) => clampBonusUse(
       current, subtotal, loyalty?.balance || 0, loyalty?.redeemPercent || 20,
+      loyalty?.maxRedemptionPerOrder || 50_000,
     ));
     if (bonusLimit <= 0) setUseBonus(false);
-  }, [subtotal, bonusLimit, loyalty?.balance, loyalty?.redeemPercent]);
+  }, [subtotal, bonusLimit, loyalty?.balance, loyalty?.redeemPercent, loyalty?.maxRedemptionPerOrder]);
+  const connectEnteredLoyalty = async () => {
+    if (!isValidLoyaltyCode(loyaltyInput) || connectingLoyalty) return;
+    setConnectingLoyalty(true);
+    setLoyaltyMessage("");
+    const result = await connectLoyalty(loyaltyInput);
+    setConnectingLoyalty(false);
+    if (result) {
+      setLoyaltyInput("");
+      setLoyaltyMode("connected");
+    } else {
+      setLoyaltyMessage(L3(lang, "Invalid bonus ID.", "Неверный бонусный ID.", "Бонус ID жарамсыз."));
+    }
+  };
+  const copyNewLoyaltyCode = async () => {
+    if (!newLoyaltyCode) return;
+    try { await navigator.clipboard.writeText(newLoyaltyCode); }
+    catch { window.prompt(L3(lang, "Copy your bonus ID", "Скопируйте бонусный ID", "Бонус ID көшіріңіз"), newLoyaltyCode); }
+  };
+  const downloadNewLoyaltyCode = () => {
+    if (!newLoyaltyCode) return;
+    const text = `Yusup Cafe bonus ID: ${newLoyaltyCode}\nKeep this code private. Anyone with it can use your bonuses.`;
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "yusup-cafe-bonus-id.txt";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
   // The public orders list is sanitized (no address/table/booking and no
   // ids), so the tracked order's full details come from a direct by-id
   // fetch — only this browser knows the id it generated at checkout. The
@@ -1990,6 +2174,14 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
         if (!location) return setErr(t("needPin"));
         if (deliveryFee === null) return setErr(t("deliveryTooFar"));
       }
+      if (loyaltyMode === "existing" && !loyalty) {
+        return setLoyaltyMessage(L3(
+          lang,
+          "Connect your bonus ID or choose another bonus option.",
+          "Подключите бонусный ID или выберите другой вариант.",
+          "Бонус ID қосыңыз немесе басқа нұсқаны таңдаңыз.",
+        ));
+      }
     }
 
     // Requested fulfillment time for scheduled delivery / to-go orders. Must
@@ -2022,6 +2214,7 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
         subtotal, serviceFee, total: grandTotal,
         status: "new",
         paymentMethod: "at_table",
+        loyaltyMode: activeLoyalty ? "existing" : "none",
         captcha: captchaToken,
       });
       if (placed && clearBooking) clearBooking();
@@ -2042,6 +2235,7 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
         deliveryFee: type === "delivery" && deliveryFee > 0 ? deliveryFee : 0,
         total: grandTotal,
         bonusToUse: bonusUsed,
+        loyaltyMode: activeLoyalty ? "existing" : loyaltyMode,
         scheduledFor,
         // Kaspi orders wait for staff to confirm the money (the server
         // enforces this status regardless of what we send here).
@@ -2057,8 +2251,10 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
       setErr(
         LAST_ORDER_ERROR === "slot_taken"
           ? t("slotTaken")
-          : LAST_ORDER_ERROR === "loyalty_login_required"
-            ? L3(lang, "Use the phone linked to this bonus balance.", "Используйте телефон, связанный с этим бонусным балансом.", "Осы бонус балансына байланыстырылған телефонды пайдаланыңыз.")
+          : LAST_ORDER_ERROR === "invalid_loyalty_id"
+            ? L3(lang, "Invalid bonus ID.", "Неверный бонусный ID.", "Бонус ID жарамсыз.")
+            : LAST_ORDER_ERROR === "loyalty_rate_limited"
+              ? L3(lang, "Too many incorrect bonus IDs. Try again in 15 minutes.", "Слишком много неверных ID. Повторите через 15 минут.", "Қате ID тым көп. 15 минуттан кейін қайталаңыз.")
             : t("orderFailed")
       );
       setCaptchaToken("");
@@ -2067,6 +2263,7 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
       }
       return;
     }
+    if (placed.issuedLoyaltyCode) setNewLoyaltyCode(placed.issuedLoyaltyCode);
     if (refreshLoyalty) refreshLoyalty();
     if (viaKaspi) window.open(kaspiUrl, "_blank", "noopener,noreferrer");
     setStep("done");
@@ -2266,30 +2463,105 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
               )}
               {!booking && (
                 <section className="rounded-lg p-4" style={{ background: P.card, border: `1px solid ${P.line}` }}>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="font-extrabold text-sm" style={{ color: P.txt }}>
-                        {L3(lang, "Website bonuses", "Бонусы сайта", "Сайт бонустары")}
-                      </div>
-                      <div className="text-xs mt-1" style={{ color: P.sub }}>
-                        {loyalty
-                          ? `${L3(lang, "Available", "Доступно", "Қолжетімді")}: ${fmt(loyalty.balance || 0)}`
-                          : L3(lang, "Earn 3% after this order is completed.", "Получите 3% после завершения этого заказа.", "Осы тапсырыс аяқталғаннан кейін 3% алыңыз.")}
-                      </div>
-                    </div>
-                    {bonusLimit > 0 && (
-                      <label className="flex items-center gap-2 text-xs font-bold" style={{ color: P.txt }}>
-                        <input type="checkbox" checked={useBonus}
-                          onChange={(event) => {
-                            const checked = event.target.checked;
-                            setUseBonus(checked);
-                            if (checked && !bonusToUse) setBonusToUse(bonusLimit);
-                          }} />
-                        {L3(lang, "Use", "Списать", "Жұмсау")}
-                      </label>
-                    )}
+                  <div className="font-extrabold text-sm" style={{ color: P.txt }}>
+                    {L3(lang, "Website bonuses", "Бонусы сайта", "Сайт бонустары")}
                   </div>
-                  {useBonus && bonusLimit > 0 && (
+                  {loyalty ? (
+                    <div className="mt-3 rounded-xl p-3" style={{ background: P.bone, border: `1px solid ${P.line}` }}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-extrabold" style={{ color: P.green }}>
+                            {activeLoyalty ? "✓ " : ""}{activeLoyalty
+                              ? L3(lang, "Bonus ID connected", "Бонусный ID подключён", "Бонус ID қосылды")
+                              : L3(lang, "Not used for this order", "Не используется в этом заказе", "Бұл тапсырыста қолданылмайды")}
+                          </div>
+                          <div className="text-xs mt-1" style={{ color: P.sub }}>
+                            {loyalty.maskedCode} · {L3(lang, "Available", "Доступно", "Қолжетімді")}: {fmt(loyalty.balance || 0)}
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => {
+                          forgetLoyalty();
+                          setLoyaltyMode("existing");
+                          setUseBonus(false);
+                          setBonusToUse(0);
+                        }} className="text-xs font-bold underline" style={{ color: P.tealD }}>
+                          {L3(lang, "Use another", "Другой ID", "Басқа ID")}
+                        </button>
+                      </div>
+                      <label className="flex items-center gap-2 text-xs font-bold mt-3" style={{ color: P.txt }}>
+                        <input type="checkbox" checked={activeLoyalty} onChange={(event) => {
+                          setLoyaltyMode(event.target.checked ? "connected" : "none");
+                          if (!event.target.checked) {
+                            setUseBonus(false);
+                            setBonusToUse(0);
+                          }
+                        }} />
+                        {L3(lang, "Use this ID for the order", "Использовать ID в заказе", "ID-ны тапсырыста қолдану")}
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="mt-3">
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          ["enroll", L3(lang, "Create ID", "Создать ID", "ID жасау")],
+                          ["existing", L3(lang, "I have ID", "У меня есть ID", "ID бар")],
+                          ["none", L3(lang, "No bonuses", "Без бонусов", "Бонуссыз")],
+                        ].map(([mode, label]) => (
+                          <button key={mode} type="button" onClick={() => {
+                            setLoyaltyMode(mode);
+                            setLoyaltyMessage("");
+                            setUseBonus(false);
+                          }} className="rounded-lg py-2.5 px-1 text-[11px] font-extrabold"
+                            style={{
+                              background: loyaltyMode === mode ? P.ink : P.bone,
+                              color: loyaltyMode === mode ? "#fff" : P.txt,
+                              border: `1px solid ${loyaltyMode === mode ? P.ink : P.line}`,
+                            }}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {loyaltyMode === "enroll" && (
+                        <div className="text-xs mt-3 rounded-lg px-3 py-2.5" style={{ background: "#E9F1DF", color: "#3F7A2E" }}>
+                          {L3(
+                            lang,
+                            "We will create an 8-digit bonus ID after this order. Save it securely—lost IDs cannot be recovered.",
+                            "После заказа мы создадим 8-значный бонусный ID. Сохраните его — потерянный ID восстановить нельзя.",
+                            "Тапсырыстан кейін 8 таңбалы бонус ID жасаймыз. Оны сақтаңыз — жоғалған ID қалпына келмейді.",
+                          )}
+                        </div>
+                      )}
+                      {loyaltyMode === "existing" && (
+                        <div className="mt-3">
+                          <div className="flex gap-2">
+                            <input value={loyaltyInput} maxLength={9} autoCapitalize="off" autoCorrect="off" spellCheck={false}
+                              onChange={(event) => setLoyaltyInput(normalizeLoyaltyCodeInput(event.target.value))}
+                              placeholder="12345678!" className="min-w-0 flex-1 rounded-lg px-3 py-2.5 text-center font-extrabold tracking-widest outline-none"
+                              style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt }} />
+                            <button type="button" onClick={connectEnteredLoyalty}
+                              disabled={!isValidLoyaltyCode(loyaltyInput) || connectingLoyalty}
+                              className="px-3 rounded-lg text-xs font-extrabold"
+                              style={{ background: P.teal, color: "#fff", opacity: !isValidLoyaltyCode(loyaltyInput) || connectingLoyalty ? 0.5 : 1 }}>
+                              {connectingLoyalty ? "…" : L3(lang, "Connect", "Подключить", "Қосу")}
+                            </button>
+                          </div>
+                          {loyaltyMessage && <div role="alert" className="text-xs font-bold mt-2" style={{ color: P.red }}>{loyaltyMessage}</div>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {activeLoyalty && bonusLimit > 0 && (
+                    <label className="flex items-center gap-2 text-xs font-bold mt-3" style={{ color: P.txt }}>
+                      <input type="checkbox" checked={useBonus}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setUseBonus(checked);
+                          if (checked && !bonusToUse) setBonusToUse(bonusLimit);
+                        }} />
+                      {L3(lang, "Use bonuses", "Списать бонусы", "Бонустарды жұмсау")}
+                    </label>
+                  )}
+                  {activeLoyalty && useBonus && bonusLimit > 0 && (
                     <div className="mt-4">
                       <div className="flex items-center gap-3">
                         <input type="range" min="0" max={bonusLimit} step="1" value={bonusUsed}
@@ -2299,6 +2571,7 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                         <input type="number" min="0" max={bonusLimit} step="1" value={bonusUsed}
                           onChange={(event) => setBonusToUse(clampBonusUse(
                             event.target.value, subtotal, loyalty?.balance || 0, loyalty?.redeemPercent || 20,
+                            loyalty?.maxRedemptionPerOrder || 50_000,
                           ))}
                           className="w-24 rounded-lg px-2 py-2 text-sm font-extrabold text-right outline-none"
                           style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt }} />
@@ -2308,9 +2581,11 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                       </div>
                     </div>
                   )}
-                  <div className="text-xs font-bold mt-3" style={{ color: P.green }}>
-                    +{fmt(bonusPreview)} {L3(lang, "pending after completion", "будет начислено после завершения", "аяқталғаннан кейін есептеледі")}
-                  </div>
+                  {(activeLoyalty || loyaltyMode === "enroll") && (
+                    <div className="text-xs font-bold mt-3" style={{ color: P.green }}>
+                      +{fmt(bonusPreview)} {L3(lang, "pending after completion", "будет начислено после завершения", "аяқталғаннан кейін есептеледі")}
+                    </div>
+                  )}
                 </section>
               )}
               <Field label={t("comment")} value={comment} onChange={setComment} ph={t("commentPh")} area />
@@ -2370,6 +2645,33 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                     : `+${fmt(live.bonusPending || 0)} ${L3(lang, "after completion", "после завершения", "аяқталғаннан кейін")}`}
                 </div>
               )}
+              {newLoyaltyCode && (
+                <div className="mt-4 mx-auto rounded-xl p-4 text-left"
+                  style={{ background: P.ink, color: "#fff", maxWidth: 320, border: "2px solid #E7C995" }}>
+                  <div className="text-xs font-extrabold" style={{ color: "#E7C995" }}>
+                    {L3(lang, "Your new private bonus ID", "Ваш новый секретный бонусный ID", "Жаңа құпия бонус ID")}
+                  </div>
+                  <div className="font-extrabold tracking-[0.18em] mt-2 text-center" style={{ fontSize: 27 }}>
+                    {newLoyaltyCode}
+                  </div>
+                  <div className="text-xs mt-3" style={{ color: "rgba(255,255,255,.76)" }}>
+                    {L3(
+                      lang,
+                      "Save it securely. If you lose it and this browser is cleared, the bonuses cannot be recovered.",
+                      "Сохраните ID. Если вы потеряете его и данные браузера будут удалены, бонусы восстановить нельзя.",
+                      "ID-ны сақтаңыз. Оны жоғалтып, браузер деректері өшсе, бонустар қалпына келмейді.",
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    <button type="button" onClick={copyNewLoyaltyCode} className="py-2.5 rounded-lg text-xs font-extrabold" style={{ background: P.teal, color: "#fff" }}>
+                      {L3(lang, "Copy ID", "Копировать ID", "ID көшіру")}
+                    </button>
+                    <button type="button" onClick={downloadNewLoyaltyCode} className="py-2.5 rounded-lg text-xs font-extrabold" style={{ background: "#fff", color: P.ink }}>
+                      {L3(lang, "Download", "Скачать", "Жүктеу")}
+                    </button>
+                  </div>
+                </div>
+              )}
               {live.type === "booking" && live.callConfirmed && (
                 <div className="mt-4 mx-auto rounded-xl px-4 py-3 text-sm font-extrabold" style={{ background: "#E9F1DF", color: "#3F7A2E", border: "1px solid #BFD8A8", maxWidth: 300 }}>
                   {t("bookingConfirmed")}
@@ -2422,7 +2724,7 @@ function CartDrawer({ open, onClose, cart, menu, lang, t, setQty, placeOrder, la
                     {refreshingOrder ? (lang === "en" ? "Refreshing…" : "Обновляем…") : t("refresh")}
                   </button>
                 </div>
-                <button onClick={() => { resetAfterOrder(); setStep("cart"); setTable(""); setComment(""); setAddress(""); setLocation(null); setSchedMode("asap"); setSchedH(""); setSchedM(""); setUseBonus(false); setBonusToUse(0); setConsent(false); setConsentError(false); setConsentShake(false); }}
+                <button onClick={() => { resetAfterOrder(); setStep("cart"); setTable(""); setComment(""); setAddress(""); setLocation(null); setSchedMode("asap"); setSchedH(""); setSchedM(""); setUseBonus(false); setBonusToUse(0); setNewLoyaltyCode(""); setConsent(false); setConsentError(false); setConsentShake(false); }}
                   className="font-bold text-sm px-4 py-2 rounded-full" style={{ background: P.ink, color: "#fff" }}>
                   {t("newOrder")}
                 </button>
@@ -3687,8 +3989,12 @@ function LoyaltyAdmin({ lang }) {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const accounts = (report?.accounts || []).filter((account) =>
-    account.phone.includes(query.replace(/\D/g, "")));
+  const accounts = (report?.accounts || []).filter((account) => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return true;
+    return account.phone.includes(needle.replace(/\D/g, ""))
+      || String(account.maskedCode || "").toLowerCase().includes(needle);
+  });
   const submitAdjustment = async () => {
     const value = Number(amount);
     if (!editing || !Number.isInteger(value) || value === 0) return;
@@ -3704,17 +4010,6 @@ function LoyaltyAdmin({ lang }) {
     setNote("");
     await load();
   };
-  const resetAccess = async (account) => {
-    const confirmed = window.confirm(L(
-      `Confirm that you verified the customer's identity. Reset device access for +${account.phone}?`,
-      `Подтвердите, что вы проверили личность клиента. Сбросить доступ устройства для +${account.phone}?`,
-      `Клиенттің жеке басын тексергеніңізді растаңыз. +${account.phone} үшін құрылғы рұқсатын қалпына келтіру керек пе?`,
-    ));
-    if (!confirmed) return;
-    const ok = await apiResetLoyaltyAccess(account.id);
-    if (!ok) alert(L("Access was not reset.", "Доступ не сброшен.", "Рұқсат қалпына келтірілмеді."));
-  };
-
   if (loading && !report) {
     return <div className="py-16 text-center text-sm font-bold" style={{ color: P.sub }}>{L("Loading bonuses...", "Загружаем бонусы...", "Бонустар жүктелуде...")}</div>;
   }
@@ -3760,7 +4055,7 @@ function LoyaltyAdmin({ lang }) {
       </div>
       <div className="mb-3">
         <input value={query} onChange={(event) => setQuery(event.target.value)}
-          inputMode="tel" placeholder={L("Search by phone", "Поиск по телефону", "Телефон бойынша іздеу")}
+          placeholder={L("Search by phone or masked ID", "Поиск по телефону или маске ID", "Телефон немесе ID маскасы бойынша іздеу")}
           className="w-full rounded-lg px-4 py-3 text-sm outline-none"
           style={{ background: P.card, border: `1px solid ${P.line}`, color: P.txt }} />
       </div>
@@ -3773,17 +4068,16 @@ function LoyaltyAdmin({ lang }) {
             style={{ borderTop: `1px solid ${P.line}` }}>
             <div className="flex-1 min-w-0">
               <div className="font-extrabold" style={{ color: P.txt }}>+{account.phone}</div>
+              <div className="text-xs font-bold mt-1" style={{ color: P.tealD }}>{account.maskedCode}</div>
               <div className="text-xs mt-1" style={{ color: P.sub }}>
                 {L("Available", "Доступно", "Қолжетімді")}: {fmt(account.balance)} · {L("Issued", "Начислено", "Есептелді")}: {fmt(account.issued)}
               </div>
             </div>
-            <div className="flex gap-2">
+            <div>
               <button type="button" onClick={() => { setEditing(account); setAmount(""); setNote(""); }}
                 className="px-3 py-2 rounded-lg text-xs font-bold" style={{ background: P.ink, color: "#fff" }}>
                 {L("Adjust", "Изменить", "Өзгерту")}
               </button>
-              <button type="button" onClick={() => resetAccess(account)} title={L("Reset device access", "Сбросить доступ устройства", "Құрылғы рұқсатын қалпына келтіру")}
-                className="w-9 h-9 rounded-lg text-sm font-bold" style={{ background: "#FAE5E3", color: P.red }}>↺</button>
             </div>
           </div>
         ))}
@@ -4613,6 +4907,7 @@ export default function App() {
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [bonusOpen, setBonusOpen] = useState(false);
   const [loyalty, setLoyalty] = useState(null);
+  const [loyaltyCode, setLoyaltyCode] = useState(() => localStorage.getItem(LOYALTY_CODE_KEY) || "");
   const [loyaltyLoading, setLoyaltyLoading] = useState(false);
 
   const t = useCallback((k) => T[lang][k] || k, [lang]);
@@ -4620,7 +4915,30 @@ export default function App() {
     setLoyaltyLoading(true);
     const result = await apiGetLoyalty();
     setLoyalty(result);
+    setLoyaltyCode(localStorage.getItem(LOYALTY_CODE_KEY) || "");
     setLoyaltyLoading(false);
+    return result;
+  }, []);
+  const connectLoyalty = useCallback(async (rawCode) => {
+    const code = normalizeLoyaltyCodeInput(rawCode);
+    if (!isValidLoyaltyCode(code)) return null;
+    const result = await apiGetLoyalty(code);
+    if (!result || !saveLoyaltyCode(code)) return null;
+    setLoyaltyCode(code);
+    setLoyalty(result);
+    return result;
+  }, []);
+  const forgetLoyalty = useCallback(() => {
+    localStorage.removeItem(LOYALTY_CODE_KEY);
+    localStorage.removeItem(LEGACY_LOYALTY_TOKEN_KEY);
+    setLoyaltyCode("");
+    setLoyalty(null);
+  }, []);
+  const rotateLoyalty = useCallback(async () => {
+    const result = await apiRotateLoyalty();
+    if (!result) return null;
+    setLoyaltyCode(result.code);
+    setLoyalty(result);
     return result;
   }, []);
 
@@ -4713,13 +5031,18 @@ export default function App() {
     const order = { id: oid, num, ts: Date.now(), status: payload.status || "new", ...payload };
     const result = await apiPlaceOrder(order);
     if (!result) return null; // caller shows the error; nothing is stored locally
-    if (result.loyalty?.token) {
-      localStorage.setItem(LOYALTY_TOKEN_KEY, result.loyalty.token);
+    if (result.loyalty?.code) {
+      saveLoyaltyCode(result.loyalty.code);
+      setLoyaltyCode(result.loyalty.code);
     }
-    if (result.loyalty && result.loyalty.linked !== false) {
+    if (result.loyalty) {
       setLoyalty(result.loyalty);
     }
-    const savedOrder = { ...order, ...(result.order || {}) };
+    const savedOrder = {
+      ...order,
+      ...(result.order || {}),
+      ...(result.loyalty?.code ? { issuedLoyaltyCode: result.loyalty.code } : {}),
+    };
     setOrders((prev) => [savedOrder, ...prev]);
     setLastOrder(savedOrder);
     try { localStorage.setItem("aspan-last-order", JSON.stringify({ id: savedOrder.id, num: savedOrder.num, ts: savedOrder.ts })); } catch (e) {}
@@ -4808,7 +5131,9 @@ export default function App() {
             openPrivacy={() => setPrivacyOpen(true)}
             loyalty={loyalty} openBonuses={() => setBonusOpen(true)} />
           <LoyaltyDrawer open={bonusOpen} onClose={() => setBonusOpen(false)}
-            loyalty={loyalty} loading={loyaltyLoading} refresh={refreshLoyalty} lang={lang} />
+            loyalty={loyalty} loyaltyCode={loyaltyCode} loading={loyaltyLoading}
+            refresh={refreshLoyalty} connectLoyalty={connectLoyalty}
+            forgetLoyalty={forgetLoyalty} rotateLoyalty={rotateLoyalty} lang={lang} />
           <OrdersBoard open={boardOpen} onClose={() => setBoardOpen(false)} orders={orders}
             lang={lang} t={t} refreshOrders={refreshOrders} />
           <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cart} menu={menu}
@@ -4817,7 +5142,8 @@ export default function App() {
             kaspiUrl={safeKaspiUrl(cafeInfo && cafeInfo.kaspiPayUrl)}
             isClosed={cafeInfo ? cafeInfo.effectiveOpen === false : false}
             openPrivacy={() => setPrivacyOpen(true)} cafeInfo={cafeInfo}
-            loyalty={loyalty} refreshLoyalty={refreshLoyalty} />
+            loyalty={loyalty} refreshLoyalty={refreshLoyalty}
+            connectLoyalty={connectLoyalty} forgetLoyalty={forgetLoyalty} />
           <PrivacyPolicy open={privacyOpen} onClose={() => setPrivacyOpen(false)} />
         </>
       ) : authed ? (

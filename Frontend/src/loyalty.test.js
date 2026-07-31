@@ -4,6 +4,8 @@ import {
   bonusEarnPreview,
   bonusSpendLimit,
   clampBonusUse,
+  isValidLoyaltyCode,
+  normalizeLoyaltyCodeInput,
 } from "./loyalty.js";
 
 test("bonus spending is capped at 20 percent and the available balance", () => {
@@ -20,4 +22,16 @@ test("bonus input is clamped to whole non-negative values", () => {
 test("earning uses the eligible subtotal after redeemed bonuses", () => {
   assert.equal(bonusEarnPreview(10_000), 300);
   assert.equal(bonusEarnPreview(10_000, 2_000), 240);
+});
+
+test("bonus spending also respects the absolute per-order cap", () => {
+  assert.equal(bonusSpendLimit(1_000_000, 900_000), 50_000);
+});
+
+test("loyalty IDs contain eight digits and one approved sign", () => {
+  assert.equal(isValidLoyaltyCode("12345678!"), true);
+  assert.equal(isValidLoyaltyCode("12345678/"), true);
+  assert.equal(isValidLoyaltyCode("1234567!"), false);
+  assert.equal(isValidLoyaltyCode("12345678?"), false);
+  assert.equal(normalizeLoyaltyCodeInput(" 1234 5678!extra"), "12345678!");
 });

@@ -4,7 +4,11 @@ from loyalty import (
     LoyaltyError,
     adjust_account,
     apply_redemption,
+    code_digest,
     earn_amount,
+    generate_code,
+    mask_code,
+    normalize_code,
     normalize_phone,
     redemption_limit,
     token_digest,
@@ -95,10 +99,25 @@ class LoyaltyRuleTests(unittest.TestCase):
         self.assertEqual(token_digest("a" * 32), token_digest("a" * 32))
         self.assertNotEqual(token_digest("a" * 32), token_digest("b" * 32))
 
+    def test_loyalty_code_format_mask_and_keyed_digest(self):
+        code = "12345678!"
+        self.assertEqual(normalize_code(f" {code} "), code)
+        self.assertEqual(mask_code(code), "12******!")
+        digest = code_digest(code, secret="a" * 32)
+        self.assertEqual(digest, code_digest(code, secret="a" * 32))
+        self.assertNotEqual(digest, code_digest(code, secret="b" * 32))
+        with self.assertRaises(LoyaltyError):
+            normalize_code("1234567!")
+
+    def test_generated_loyalty_codes_have_eight_digits_and_one_sign(self):
+        for _ in range(50):
+            self.assertRegex(generate_code(), r"^\d{8}[!@#$%_+=\)/]$")
+
     def test_earning_and_redemption_limits_use_whole_tenge(self):
         self.assertEqual(earn_amount(10_000), 300)
         self.assertEqual(earn_amount(10_000, 2_000), 240)
         self.assertEqual(redemption_limit(10_003), 2_000)
+        self.assertEqual(redemption_limit(1_000_000), 50_000)
 
     def test_staff_adjustment_requires_an_audit_note(self):
         with self.assertRaisesRegex(LoyaltyError, "adjustment_note_required"):

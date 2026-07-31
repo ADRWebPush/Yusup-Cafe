@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import time
@@ -12,6 +13,11 @@ REDEEM_PERCENT = 20
 EXPIRY_DAYS = 90
 RESTORE_EXPIRY_DAYS = 90
 MAX_ADJUSTMENT = 1_000_000
+MAX_REDEMPTION_PER_ORDER = 50_000
+LOYALTY_CODE_SIGNS = "!@#$%_+=)/"
+LOYALTY_CODE_RE = re.compile(r"^\d{8}[!@#$%_+=\)/]$")
+ACCESS_WINDOW_MS = 15 * 60 * 1000
+ACCESS_SCOPE_LIMITS = {"device": 5, "ip": 5, "global": 500}
 
 
 class LoyaltyError(ValueError):
@@ -51,7 +57,8 @@ def earn_amount(subtotal, bonus_used=0):
 
 
 def redemption_limit(subtotal):
-    return max(0, int(subtotal or 0)) * REDEEM_PERCENT // 100
+    percentage_limit = max(0, int(subtotal or 0)) * REDEEM_PERCENT // 100
+    return min(percentage_limit, MAX_REDEMPTION_PER_ORDER)
 
 
 def token_digest(token):
@@ -60,15 +67,113 @@ def token_digest(token):
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def normalize_code(value):
+    if not isinstance(value, str):
+        raise LoyaltyError("invalid_loyalty_id")
+    code = value.strip()
+    if not LOYALTY_CODE_RE.fullmatch(code):
+        raise LoyaltyError("invalid_loyalty_id")
+    return code
+
+
+def _hmac_secret(secret=None):
+    value = secret or os.environ.get("LOYALTY_HMAC_SECRET") or os.environ.get("JWT_SECRET")
+    if not isinstance(value, str) or len(value) < 32:
+        raise RuntimeError("LOYALTY_HMAC_SECRET (or JWT_SECRET) must be at least 32 characters")
+    return value.encode("utf-8")
+
+
+def code_digest(code, secret=None):
+    normalized = normalize_code(code)
+    return hmac.new(
+        _hmac_secret(secret),
+        f"yusup-loyalty-code-v2:{normalized}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def mask_code(code):
+    normalized = normalize_code(code)
+    return f"{normalized[:2]}******{normalized[-1]}"
+
+
+def generate_code():
+    return f"{secrets.randbelow(100_000_000):08d}{secrets.choice(LOYALTY_CODE_SIGNS)}"
+
+
+def _scope_digest(kind, value):
+    return hmac.new(
+        _hmac_secret(),
+        f"yusup-loyalty-attempt:{kind}:{value}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _access_scopes(remote_address, device_id):
+    scopes = [("global", "global", ACCESS_SCOPE_LIMITS["global"])]
+    if remote_address:
+        scopes.append(("ip", _scope_digest("ip", remote_address), ACCESS_SCOPE_LIMITS["ip"]))
+    if isinstance(device_id, str) and 16 <= len(device_id) <= 100:
+        scopes.append(("device", _scope_digest("device", device_id), ACCESS_SCOPE_LIMITS["device"]))
+    return scopes
+
+
+def access_is_limited(conn, remote_address, device_id, at_ms=None):
+    at_ms = int(at_ms or now_ms())
+    cutoff = at_ms - ACCESS_WINDOW_MS
+    for kind, scope, limit in _access_scopes(remote_address, device_id):
+        row = conn.execute(
+            "SELECT failures, window_started FROM loyalty_access_attempts WHERE scope = %s",
+            (scope,),
+        ).fetchone()
+        if row and int(row["window_started"]) > cutoff and int(row["failures"]) >= limit:
+            return True
+    return False
+
+
+def record_access_failure(conn, remote_address, device_id, at_ms=None):
+    at_ms = int(at_ms or now_ms())
+    cutoff = at_ms - ACCESS_WINDOW_MS
+    conn.execute(
+        "DELETE FROM loyalty_access_attempts WHERE updated_at <= %s",
+        (at_ms - 30 * 24 * 60 * 60 * 1000,),
+    )
+    for _kind, scope, _limit in _access_scopes(remote_address, device_id):
+        conn.execute(
+            "INSERT INTO loyalty_access_attempts (scope, failures, window_started, updated_at) "
+            "VALUES (%s, 1, %s, %s) "
+            "ON CONFLICT (scope) DO UPDATE SET "
+            "failures = CASE WHEN loyalty_access_attempts.window_started <= %s "
+            "THEN 1 ELSE loyalty_access_attempts.failures + 1 END, "
+            "window_started = CASE WHEN loyalty_access_attempts.window_started <= %s "
+            "THEN EXCLUDED.window_started ELSE loyalty_access_attempts.window_started END, "
+            "updated_at = EXCLUDED.updated_at",
+            (scope, at_ms, at_ms, cutoff, cutoff),
+        )
+
+
 def install_schema(conn):
     conn.execute("""
         CREATE TABLE IF NOT EXISTS loyalty_accounts (
             id TEXT PRIMARY KEY,
-            phone TEXT NOT NULL UNIQUE,
+            phone TEXT NOT NULL,
             token_hash TEXT UNIQUE,
+            code_hash TEXT,
+            code_hint TEXT,
             created_at BIGINT NOT NULL,
             updated_at BIGINT NOT NULL
         )
+    """)
+    # Safe in-place migration from the original phone-bound scheme. Phone is
+    # retained for staff contact/search, but is no longer unique or usable as
+    # proof of ownership. token_hash remains temporarily for one-time migration
+    # of customers who still have an old browser token.
+    conn.execute("ALTER TABLE loyalty_accounts ADD COLUMN IF NOT EXISTS code_hash TEXT")
+    conn.execute("ALTER TABLE loyalty_accounts ADD COLUMN IF NOT EXISTS code_hint TEXT")
+    conn.execute("ALTER TABLE loyalty_accounts DROP CONSTRAINT IF EXISTS loyalty_accounts_phone_key")
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS loyalty_accounts_code_hash
+        ON loyalty_accounts (code_hash) WHERE code_hash IS NOT NULL
     """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS loyalty_credits (
@@ -115,10 +220,14 @@ def install_schema(conn):
         CREATE INDEX IF NOT EXISTS loyalty_events_account
         ON loyalty_events (account_id, created_at DESC)
     """)
-
-
-def _new_token():
-    return secrets.token_urlsafe(32)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS loyalty_access_attempts (
+            scope TEXT PRIMARY KEY,
+            failures INTEGER NOT NULL,
+            window_started BIGINT NOT NULL,
+            updated_at BIGINT NOT NULL
+        )
+    """)
 
 
 def account_by_token(conn, token):
@@ -126,62 +235,82 @@ def account_by_token(conn, token):
     if not digest:
         return None
     return conn.execute(
-        "SELECT id, phone, token_hash, created_at, updated_at "
+        "SELECT id, phone, token_hash, code_hash, code_hint, created_at, updated_at "
         "FROM loyalty_accounts WHERE token_hash = %s",
         (digest,),
     ).fetchone()
 
 
-def prepare_account(conn, phone, supplied_token=None, at_ms=None):
-    at_ms = int(at_ms or now_ms())
-    normalized = normalize_phone(phone)
-    account = conn.execute(
-        "SELECT id, phone, token_hash, created_at, updated_at "
-        "FROM loyalty_accounts WHERE phone = %s FOR UPDATE",
-        (normalized,),
+def account_by_code(conn, code, for_update=False):
+    digest = code_digest(code)
+    suffix = " FOR UPDATE" if for_update else ""
+    return conn.execute(
+        "SELECT id, phone, token_hash, code_hash, code_hint, created_at, updated_at "
+        f"FROM loyalty_accounts WHERE code_hash = %s{suffix}",
+        (digest,),
     ).fetchone()
 
-    if not account:
-        issued_token = _new_token()
-        account_id = "l" + uuid.uuid4().hex
-        digest = token_digest(issued_token)
-        conn.execute(
-            "INSERT INTO loyalty_accounts "
-            "(id, phone, token_hash, created_at, updated_at) "
-            "VALUES (%s, %s, %s, %s, %s)",
-            (account_id, normalized, digest, at_ms, at_ms),
-        )
-        account = {
-            "id": account_id,
-            "phone": normalized,
-            "token_hash": digest,
-            "created_at": at_ms,
-            "updated_at": at_ms,
-        }
-        return account, issued_token, True
 
-    supplied_digest = token_digest(supplied_token)
-    authenticated = bool(
-        supplied_digest
-        and account.get("token_hash")
-        and hmac.compare_digest(supplied_digest, account["token_hash"])
+def _unique_code(conn):
+    for _attempt in range(20):
+        code = generate_code()
+        digest = code_digest(code)
+        exists = conn.execute(
+            "SELECT 1 FROM loyalty_accounts WHERE code_hash = %s",
+            (digest,),
+        ).fetchone()
+        if not exists:
+            return code, digest
+    raise LoyaltyError("loyalty_id_generation_failed")
+
+
+def create_account(conn, phone, at_ms=None):
+    at_ms = int(at_ms or now_ms())
+    normalized = normalize_phone(phone)
+    code, digest = _unique_code(conn)
+    account_id = "l" + uuid.uuid4().hex
+    hint = mask_code(code)
+    conn.execute(
+        "INSERT INTO loyalty_accounts "
+        "(id, phone, token_hash, code_hash, code_hint, created_at, updated_at) "
+        "VALUES (%s, %s, NULL, %s, %s, %s, %s)",
+        (account_id, normalized, digest, hint, at_ms, at_ms),
     )
-    issued_token = None
+    account = {
+        "id": account_id,
+        "phone": normalized,
+        "token_hash": None,
+        "code_hash": digest,
+        "code_hint": hint,
+        "created_at": at_ms,
+        "updated_at": at_ms,
+    }
+    return account, code
 
-    # Staff can reset a lost device. The next successful order for that phone
-    # securely claims a fresh token; no plaintext token is stored server-side.
-    if not account.get("token_hash"):
-        issued_token = _new_token()
-        digest = token_digest(issued_token)
+
+def rotate_account_code(conn, account_id, at_ms=None, revoke_legacy=True):
+    at_ms = int(at_ms or now_ms())
+    account = conn.execute(
+        "SELECT id FROM loyalty_accounts WHERE id = %s FOR UPDATE",
+        (account_id,),
+    ).fetchone()
+    if not account:
+        raise LoyaltyError("loyalty_not_found")
+    code, digest = _unique_code(conn)
+    hint = mask_code(code)
+    if revoke_legacy:
         conn.execute(
-            "UPDATE loyalty_accounts SET token_hash = %s, updated_at = %s "
-            "WHERE id = %s",
-            (digest, at_ms, account["id"]),
+            "UPDATE loyalty_accounts SET code_hash = %s, code_hint = %s, "
+            "token_hash = NULL, updated_at = %s WHERE id = %s",
+            (digest, hint, at_ms, account_id),
         )
-        account["token_hash"] = digest
-        authenticated = True
-
-    return account, issued_token, authenticated
+    else:
+        conn.execute(
+            "UPDATE loyalty_accounts SET code_hash = %s, code_hint = %s, "
+            "updated_at = %s WHERE id = %s",
+            (digest, hint, at_ms, account_id),
+        )
+    return code
 
 
 def available_balance(conn, account_id, at_ms=None):
@@ -195,10 +324,10 @@ def available_balance(conn, account_id, at_ms=None):
     return int((row or {}).get("balance") or 0)
 
 
-def snapshot(conn, account_id, issued_token=None, at_ms=None, include_phone=False):
+def snapshot(conn, account_id, issued_code=None, at_ms=None, include_phone=False):
     at_ms = int(at_ms or now_ms())
     account = conn.execute(
-        "SELECT id, phone, created_at, updated_at FROM loyalty_accounts WHERE id = %s",
+        "SELECT id, phone, code_hint, created_at, updated_at FROM loyalty_accounts WHERE id = %s",
         (account_id,),
     ).fetchone()
     if not account:
@@ -230,12 +359,13 @@ def snapshot(conn, account_id, issued_token=None, at_ms=None, include_phone=Fals
 
     result = {
         "accountId": account["id"],
-        "phone": account["phone"] if include_phone else mask_phone(account["phone"]),
+        "maskedCode": account.get("code_hint") or "Legacy account",
         "balance": int(credit_row.get("balance") or 0),
         "pending": int(pending),
         "nextExpiry": credit_row.get("next_expiry"),
         "earnPercent": EARN_PERCENT,
         "redeemPercent": REDEEM_PERCENT,
+        "maxRedemptionPerOrder": MAX_REDEMPTION_PER_ORDER,
         "expiryDays": EXPIRY_DAYS,
         "events": [{
             "kind": event["kind"],
@@ -245,8 +375,10 @@ def snapshot(conn, account_id, issued_token=None, at_ms=None, include_phone=Fals
             "data": event.get("data") if isinstance(event.get("data"), dict) else {},
         } for event in events],
     }
-    if issued_token:
-        result["token"] = issued_token
+    if include_phone:
+        result["phone"] = account["phone"]
+    if issued_code:
+        result["code"] = issued_code
     return result
 
 
@@ -418,13 +550,13 @@ def restore_order_redemption(conn, order, at_ms=None):
 def admin_report(conn, at_ms=None):
     at_ms = int(at_ms or now_ms())
     rows = conn.execute(
-        "SELECT a.id, a.phone, a.created_at, a.updated_at, "
+        "SELECT a.id, a.phone, a.code_hint, a.created_at, a.updated_at, "
         "COALESCE(SUM(c.amount), 0) AS issued, "
         "COALESCE(SUM(CASE WHEN c.remaining > 0 AND c.expires_at > %s "
         "THEN c.remaining ELSE 0 END), 0) AS balance "
         "FROM loyalty_accounts a "
         "LEFT JOIN loyalty_credits c ON c.account_id = a.id "
-        "GROUP BY a.id, a.phone, a.created_at, a.updated_at "
+        "GROUP BY a.id, a.phone, a.code_hint, a.created_at, a.updated_at "
         "ORDER BY a.updated_at DESC LIMIT 250",
         (at_ms,),
     ).fetchall()
@@ -434,13 +566,14 @@ def admin_report(conn, at_ms=None):
     ).fetchone() or {}
     recent = conn.execute(
         "SELECT e.kind, e.amount, e.order_id, e.created_at, e.data, "
-        "a.phone, a.id AS account_id "
+        "a.phone, a.code_hint, a.id AS account_id "
         "FROM loyalty_events e JOIN loyalty_accounts a ON a.id = e.account_id "
         "ORDER BY e.created_at DESC, e.id DESC LIMIT 100"
     ).fetchall()
     accounts = [{
         "id": row["id"],
         "phone": row["phone"],
+        "maskedCode": row.get("code_hint") or "Legacy account",
         "balance": int(row["balance"] or 0),
         "issued": int(row["issued"] or 0),
         "createdAt": int(row["created_at"]),
@@ -450,6 +583,7 @@ def admin_report(conn, at_ms=None):
         "settings": {
             "earnPercent": EARN_PERCENT,
             "redeemPercent": REDEEM_PERCENT,
+            "maxRedemptionPerOrder": MAX_REDEMPTION_PER_ORDER,
             "expiryDays": EXPIRY_DAYS,
         },
         "summary": {
@@ -462,6 +596,7 @@ def admin_report(conn, at_ms=None):
         "events": [{
             "accountId": row["account_id"],
             "phone": row["phone"],
+            "maskedCode": row.get("code_hint") or "Legacy account",
             "kind": row["kind"],
             "amount": int(row["amount"]),
             "orderId": row.get("order_id"),
@@ -528,14 +663,3 @@ def adjust_account(conn, account_id, amount, note="", at_ms=None):
         (at_ms, account_id),
     )
     return available_balance(conn, account_id, at_ms)
-
-
-def reset_access(conn, account_id, at_ms=None):
-    at_ms = int(at_ms or now_ms())
-    row = conn.execute(
-        "UPDATE loyalty_accounts SET token_hash = NULL, updated_at = %s "
-        "WHERE id = %s RETURNING id",
-        (at_ms, account_id),
-    ).fetchone()
-    if not row:
-        raise LoyaltyError("loyalty_not_found")

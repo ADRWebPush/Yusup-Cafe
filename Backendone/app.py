@@ -33,16 +33,20 @@ CORS(app,
 from db import get_db
 from loyalty import (
     LoyaltyError,
+    access_is_limited,
+    account_by_code,
     account_by_token,
     admin_report as loyalty_admin_report,
     adjust_account as adjust_loyalty_account,
     apply_redemption,
     award_order,
+    create_account as create_loyalty_account,
     earn_amount,
     install_schema as install_loyalty_schema,
-    prepare_account,
-    reset_access as reset_loyalty_access,
+    normalize_phone as normalize_loyalty_phone,
+    record_access_failure,
     restore_order_redemption,
+    rotate_account_code,
     snapshot as loyalty_snapshot,
 )
 from sales_history import aggregate_sales_history
@@ -169,23 +173,86 @@ def auth_check():
     return jsonify({"ok": True})
 
 
+def loyalty_code():
+    return request.headers.get("X-Loyalty-Code", "").strip()
+
+
+def loyalty_device_id():
+    return request.headers.get("X-Loyalty-Device", "").strip()
+
+
 def loyalty_token():
+    """Legacy browser token, accepted once so existing balances can migrate."""
     return request.headers.get("X-Loyalty-Token", "").strip()
+
+
+def loyalty_account_from_request(conn, for_update=False):
+    code = loyalty_code()
+    if not code:
+        return None
+    device_id = loyalty_device_id()
+    if access_is_limited(conn, request.remote_addr, device_id):
+        raise LoyaltyError("loyalty_rate_limited")
+    try:
+        account = account_by_code(conn, code, for_update=for_update)
+    except LoyaltyError:
+        account = None
+    if not account:
+        record_access_failure(conn, request.remote_addr, device_id)
+        raise LoyaltyError("invalid_loyalty_id")
+    return account
+
+
+def loyalty_error_response(exc):
+    if exc.code == "loyalty_rate_limited":
+        return jsonify({"error": "loyalty_rate_limited"}), 429
+    # Never reveal whether any part of a supplied code matched.
+    return jsonify({"error": "invalid_loyalty_id"}), 401
 
 
 @app.route("/api/loyalty/me", methods=["GET"])
 @limiter.limit("60 per minute")
 def get_loyalty_account():
     conn = get_db()
-    account = account_by_token(conn, loyalty_token())
-    if not account:
-        conn.close()
-        return jsonify({"error": "loyalty_login_required"}), 401
     try:
-        result = loyalty_snapshot(conn, account["id"])
+        issued_code = None
+        account = loyalty_account_from_request(conn)
+        if not account and loyalty_token():
+            account = account_by_token(conn, loyalty_token())
+            if account:
+                # One-time migration: the old token is revoked as the new
+                # customer-held code is issued.
+                issued_code = rotate_account_code(conn, account["id"])
+        if not account:
+            conn.close()
+            return jsonify({"error": "invalid_loyalty_id"}), 401
+        result = loyalty_snapshot(conn, account["id"], issued_code=issued_code)
+        if issued_code:
+            conn.commit()
     except LoyaltyError as exc:
+        # Failed-attempt counters intentionally survive the rejected request.
+        conn.commit()
         conn.close()
-        return jsonify({"error": exc.code}), 404
+        return loyalty_error_response(exc)
+    conn.close()
+    return jsonify(result)
+
+
+@app.route("/api/loyalty/rotate", methods=["POST"])
+@limiter.limit("5 per hour")
+def rotate_loyalty_code():
+    conn = get_db()
+    try:
+        account = loyalty_account_from_request(conn, for_update=True)
+        if not account:
+            raise LoyaltyError("invalid_loyalty_id")
+        issued_code = rotate_account_code(conn, account["id"])
+        result = loyalty_snapshot(conn, account["id"], issued_code=issued_code)
+        conn.commit()
+    except LoyaltyError as exc:
+        conn.commit()
+        conn.close()
+        return loyalty_error_response(exc)
     conn.close()
     return jsonify(result)
 
@@ -216,21 +283,6 @@ def adjust_loyalty_admin(account_id):
         return jsonify({"error": exc.code}), status
     conn.close()
     return jsonify({"ok": True, "balance": balance})
-
-
-@app.route("/api/admin/loyalty/<account_id>/reset-access", methods=["POST"])
-@require_owner
-def reset_loyalty_admin_access(account_id):
-    conn = get_db()
-    try:
-        reset_loyalty_access(conn, account_id)
-        conn.commit()
-    except LoyaltyError as exc:
-        conn.rollback()
-        conn.close()
-        return jsonify({"error": exc.code}), 404
-    conn.close()
-    return jsonify({"ok": True})
 
 
 @app.route("/api/menu", methods=["GET"])
@@ -1113,33 +1165,75 @@ def place_order():
     base_total = grand_total + delivery_fee
 
     try:
-        account, issued_token, loyalty_authenticated = prepare_account(
-            conn, order["phone"], loyalty_token(), order["ts"]
-        )
+        loyalty_mode = str(body.get("loyaltyMode") or "none").strip().lower()
+        if loyalty_mode not in {"existing", "enroll", "none"}:
+            raise LoyaltyError("invalid_loyalty_mode")
+
+        account = None
+        issued_code = None
+        if loyalty_code():
+            account = loyalty_account_from_request(conn, for_update=True)
+        elif loyalty_token():
+            # Existing customers keep their balance after deployment. The
+            # first request with an old device token replaces it with the new
+            # eight-digit code and permanently revokes the old token.
+            account = account_by_token(conn, loyalty_token())
+            if account:
+                issued_code = rotate_account_code(conn, account["id"])
+        elif loyalty_mode == "enroll":
+            account, issued_code = create_loyalty_account(
+                conn, order["phone"], order["ts"]
+            )
+        elif loyalty_mode == "existing":
+            raise LoyaltyError("invalid_loyalty_id")
+
+        if loyalty_mode == "existing" and not account:
+            raise LoyaltyError("invalid_loyalty_id")
+
         requested_bonus = body.get("bonusToUse", 0)
         try:
             requested_bonus_number = int(requested_bonus or 0)
         except (TypeError, ValueError):
             raise LoyaltyError("invalid_bonus_amount") from None
-        if requested_bonus_number > 0 and not loyalty_authenticated:
-            raise LoyaltyError("loyalty_login_required")
-        bonus_used = apply_redemption(
-            conn,
-            account["id"],
-            order["id"],
-            requested_bonus_number,
-            subtotal,
-            order["ts"],
-        )
-    except LoyaltyError as exc:
-        conn.rollback()
-        conn.close()
-        status = 401 if exc.code == "loyalty_login_required" else 400
-        return jsonify({"error": exc.code}), status
+        if requested_bonus_number > 0 and not account:
+            raise LoyaltyError("invalid_loyalty_id")
 
-    order["loyaltyAccountId"] = account["id"]
+        if account:
+            # Phone remains useful contact metadata for staff, but never
+            # selects or authenticates the account. Multiple accounts may use
+            # the same number.
+            current_phone = normalize_loyalty_phone(order["phone"])
+            conn.execute(
+                "UPDATE loyalty_accounts SET phone = %s, updated_at = %s WHERE id = %s",
+                (current_phone, order["ts"], account["id"]),
+            )
+            bonus_used = apply_redemption(
+                conn,
+                account["id"],
+                order["id"],
+                requested_bonus_number,
+                subtotal,
+                order["ts"],
+            )
+        else:
+            bonus_used = 0
+    except LoyaltyError as exc:
+        if exc.code == "invalid_loyalty_id" and loyalty_code():
+            # loyalty_account_from_request recorded the failed code attempt.
+            conn.commit()
+        else:
+            conn.rollback()
+        conn.close()
+        if exc.code in {"invalid_loyalty_id", "loyalty_rate_limited"}:
+            return loyalty_error_response(exc)
+        return jsonify({"error": exc.code}), 400
+
     order["bonusUsed"] = bonus_used
-    order["bonusPending"] = earn_amount(subtotal, bonus_used)
+    if account:
+        order["loyaltyAccountId"] = account["id"]
+        order["bonusPending"] = earn_amount(subtotal, bonus_used)
+    else:
+        order["bonusPending"] = 0
     order["total"] = max(0, base_total - bonus_used)
     order["fee"] = platform_commission(order["total"])
     order["feeAccrued"] = False
@@ -1153,9 +1247,8 @@ def place_order():
          order.get("payment_id"), json.dumps(order))
     )
     loyalty_result = (
-        loyalty_snapshot(conn, account["id"], issued_token, order["ts"])
-        if loyalty_authenticated
-        else {"linked": False}
+        loyalty_snapshot(conn, account["id"], issued_code=issued_code, at_ms=order["ts"])
+        if account else None
     )
     conn.commit()
 
