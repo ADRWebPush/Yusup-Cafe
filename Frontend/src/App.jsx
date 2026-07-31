@@ -3162,16 +3162,6 @@ function GuestSite({ lang, setLang, t, menu, cart, setQty, openCart, cartCount, 
               style={{ background: P.card, border: `1px solid ${P.line}` }}>
               {langCode(lang)}
             </motion.button>
-            <motion.button whileTap={{ scale: 0.95 }} onClick={openBonuses}
-              aria-label={L3(lang, "Bonuses", "Бонусы", "Бонустар")}
-              title={L3(lang, "Bonuses", "Бонусы", "Бонустар")}
-              className="flex items-center gap-1.5 text-xs font-extrabold px-3 py-2 rounded-full"
-              style={{ background: P.card, border: `1px solid ${P.line}`, color: P.tealD }}>
-              <span aria-hidden="true" className="flex items-center justify-center rounded-full"
-                style={{ width: 18, height: 18, background: P.saff, color: P.ink, fontSize: 10 }}>B</span>
-              <span className="bonus-label">{L3(lang, "Bonuses", "Бонусы", "Бонустар")}</span>
-              {(loyalty?.balance || 0) > 0 && <span>{Number(loyalty.balance).toLocaleString("ru-RU")}</span>}
-            </motion.button>
             <motion.button ref={cartTargetRef} data-cart-target="true" animate={cartControls} whileTap={{ scale: 0.96 }} onClick={openCart}
               className="flex items-center gap-2 text-sm font-extrabold px-4 py-2 rounded-full" style={{ background: P.ink, color: "#fff" }}>
               {cartCount > 0 ? fmt(cartTotal) : t("cart")}
