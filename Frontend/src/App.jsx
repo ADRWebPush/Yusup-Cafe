@@ -2515,9 +2515,9 @@ function CartDrawer({
                         <div className="text-xs mt-3 rounded-lg px-3 py-2.5" style={{ background: "#E9F1DF", color: "#3F7A2E" }}>
                           {L3(
                             lang,
-                            "We will create an 8-digit bonus ID after this order. Save it securely—lost IDs cannot be recovered.",
-                            "После заказа мы создадим 8-значный бонусный ID. Сохраните его — потерянный ID восстановить нельзя.",
-                            "Тапсырыстан кейін 8 таңбалы бонус ID жасаймыз. Оны сақтаңыз — жоғалған ID қалпына келмейді.",
+                            "We will create a 9-digit bonus ID after this order. Save it securely—lost IDs cannot be recovered.",
+                            "После заказа мы создадим 9-значный бонусный ID. Сохраните его — потерянный ID восстановить нельзя.",
+                            "Тапсырыстан кейін 9 таңбалы бонус ID жасаймыз. Оны сақтаңыз — жоғалған ID қалпына келмейді.",
                           )}
                         </div>
                       )}
