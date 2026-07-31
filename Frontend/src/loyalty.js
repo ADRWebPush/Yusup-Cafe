@@ -4,8 +4,7 @@ export const LOYALTY_DEVICE_KEY = "yusup-loyalty-device-v1";
 export const LOYALTY_EARN_PERCENT = 3;
 export const LOYALTY_REDEEM_PERCENT = 20;
 export const LOYALTY_MAX_REDEMPTION = 50_000;
-export const LOYALTY_CODE_SIGNS = "!@#$%_+=)/";
-export const LOYALTY_CODE_PATTERN = /^\d{8}[!@#$%_+=)/]$/;
+export const LOYALTY_CODE_PATTERN = /^\d{9}$/;
 
 const whole = (value) => {
   const number = Number(value);
@@ -44,7 +43,7 @@ export function normalizeLoyaltyCodeInput(value) {
   return String(value || "")
     .replace(/\s/g, "")
     .split("")
-    .filter((character) => /\d/.test(character) || LOYALTY_CODE_SIGNS.includes(character))
+    .filter((character) => /\d/.test(character))
     .join("")
     .slice(0, 9);
 }

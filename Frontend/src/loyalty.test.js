@@ -28,10 +28,10 @@ test("bonus spending also respects the absolute per-order cap", () => {
   assert.equal(bonusSpendLimit(1_000_000, 900_000), 50_000);
 });
 
-test("loyalty IDs contain eight digits and one approved sign", () => {
-  assert.equal(isValidLoyaltyCode("12345678!"), true);
-  assert.equal(isValidLoyaltyCode("12345678/"), true);
-  assert.equal(isValidLoyaltyCode("1234567!"), false);
-  assert.equal(isValidLoyaltyCode("12345678?"), false);
-  assert.equal(normalizeLoyaltyCodeInput(" 1234 5678!extra"), "12345678!");
+test("loyalty IDs contain nine digits", () => {
+  assert.equal(isValidLoyaltyCode("123456789"), true);
+  assert.equal(isValidLoyaltyCode("12345678"), false);
+  assert.equal(isValidLoyaltyCode("1234567890"), false);
+  assert.equal(isValidLoyaltyCode("12345678!"), false);
+  assert.equal(normalizeLoyaltyCodeInput(" 1234 56789extra"), "123456789");
 });

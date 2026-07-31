@@ -100,18 +100,20 @@ class LoyaltyRuleTests(unittest.TestCase):
         self.assertNotEqual(token_digest("a" * 32), token_digest("b" * 32))
 
     def test_loyalty_code_format_mask_and_keyed_digest(self):
-        code = "12345678!"
+        code = "123456789"
         self.assertEqual(normalize_code(f" {code} "), code)
-        self.assertEqual(mask_code(code), "12******!")
+        self.assertEqual(mask_code(code), "12******9")
         digest = code_digest(code, secret="a" * 32)
         self.assertEqual(digest, code_digest(code, secret="a" * 32))
         self.assertNotEqual(digest, code_digest(code, secret="b" * 32))
         with self.assertRaises(LoyaltyError):
-            normalize_code("1234567!")
+            normalize_code("12345678")
+        with self.assertRaises(LoyaltyError):
+            normalize_code("12345678!")
 
-    def test_generated_loyalty_codes_have_eight_digits_and_one_sign(self):
+    def test_generated_loyalty_codes_have_nine_digits(self):
         for _ in range(50):
-            self.assertRegex(generate_code(), r"^\d{8}[!@#$%_+=\)/]$")
+            self.assertRegex(generate_code(), r"^\d{9}$")
 
     def test_earning_and_redemption_limits_use_whole_tenge(self):
         self.assertEqual(earn_amount(10_000), 300)

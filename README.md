@@ -17,13 +17,13 @@ If you are developing a production application, we recommend using TypeScript wi
 
 ## Loyalty IDs
 
-The loyalty program uses customer-held IDs in the form `12345678!`. Phone
+The loyalty program uses customer-held IDs in the form `123456789`. Phone
 numbers are contact information only and never select a loyalty account.
 
 - New customers can create an ID while checking out, connect an existing ID,
   or place an order without bonuses.
 - The full ID is returned only when created or rotated. The database stores a
-  keyed HMAC and a masked display value such as `12******!`.
+  keyed HMAC and a masked display value such as `12******9`.
 - Set `LOYALTY_HMAC_SECRET` to a random secret of at least 32 characters in
   production. If omitted, the backend falls back to `JWT_SECRET` for backwards
   compatibility.

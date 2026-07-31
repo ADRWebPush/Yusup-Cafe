@@ -1805,7 +1805,7 @@ function LoyaltyDrawer({
                     </label>
                     <input value={codeInput} maxLength={9} autoCapitalize="off" autoCorrect="off" spellCheck={false}
                       onChange={(event) => setCodeInput(normalizeLoyaltyCodeInput(event.target.value))}
-                      placeholder="12345678!" className="w-full mt-2 rounded-lg px-3 py-3 text-center font-extrabold tracking-widest outline-none"
+                      placeholder="123456789" className="w-full mt-2 rounded-lg px-3 py-3 text-center font-extrabold tracking-widest outline-none"
                       style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt }} />
                     <button type="button" onClick={connect} disabled={!isValidLoyaltyCode(codeInput) || working}
                       className="w-full mt-2 py-3 rounded-lg font-extrabold"
@@ -2526,7 +2526,7 @@ function CartDrawer({
                           <div className="flex gap-2">
                             <input value={loyaltyInput} maxLength={9} autoCapitalize="off" autoCorrect="off" spellCheck={false}
                               onChange={(event) => setLoyaltyInput(normalizeLoyaltyCodeInput(event.target.value))}
-                              placeholder="12345678!" className="min-w-0 flex-1 rounded-lg px-3 py-2.5 text-center font-extrabold tracking-widest outline-none"
+                              placeholder="123456789" className="min-w-0 flex-1 rounded-lg px-3 py-2.5 text-center font-extrabold tracking-widest outline-none"
                               style={{ background: P.bone, border: `1px solid ${P.line}`, color: P.txt }} />
                             <button type="button" onClick={connectEnteredLoyalty}
                               disabled={!isValidLoyaltyCode(loyaltyInput) || connectingLoyalty}

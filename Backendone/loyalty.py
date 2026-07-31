@@ -14,8 +14,7 @@ EXPIRY_DAYS = 90
 RESTORE_EXPIRY_DAYS = 90
 MAX_ADJUSTMENT = 1_000_000
 MAX_REDEMPTION_PER_ORDER = 50_000
-LOYALTY_CODE_SIGNS = "!@#$%_+=)/"
-LOYALTY_CODE_RE = re.compile(r"^\d{8}[!@#$%_+=\)/]$")
+LOYALTY_CODE_RE = re.compile(r"^\d{9}$")
 ACCESS_WINDOW_MS = 15 * 60 * 1000
 ACCESS_SCOPE_LIMITS = {"device": 5, "ip": 5, "global": 500}
 
@@ -98,7 +97,7 @@ def mask_code(code):
 
 
 def generate_code():
-    return f"{secrets.randbelow(100_000_000):08d}{secrets.choice(LOYALTY_CODE_SIGNS)}"
+    return f"{secrets.randbelow(1_000_000_000):09d}"
 
 
 def _scope_digest(kind, value):
