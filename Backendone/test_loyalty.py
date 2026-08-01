@@ -118,7 +118,7 @@ class LoyaltyRuleTests(unittest.TestCase):
     def test_earning_and_redemption_limits_use_whole_tenge(self):
         self.assertEqual(earn_amount(10_000), 300)
         self.assertEqual(earn_amount(10_000, 2_000), 240)
-        self.assertEqual(redemption_limit(10_003), 2_000)
+        self.assertEqual(redemption_limit(10_003), 3_501)
         self.assertEqual(redemption_limit(1_000_000), 50_000)
 
     def test_staff_adjustment_requires_an_audit_note(self):
@@ -128,18 +128,18 @@ class LoyaltyRuleTests(unittest.TestCase):
     def test_redemption_is_fifo_capped_and_idempotent(self):
         conn = _RedemptionConnection()
         used = apply_redemption(
-            conn, "account-1", "order-1", requested=3000, subtotal=10_000, at_ms=1000
+            conn, "account-1", "order-1", requested=3000, subtotal=5_000, at_ms=1000
         )
-        self.assertEqual(used, 2000)
-        self.assertEqual([item["remaining"] for item in conn.credits], [0, 500])
-        self.assertEqual([item["amount"] for item in conn.redemptions], [1500, 500])
-        self.assertEqual(conn.events[0]["amount"], -2000)
+        self.assertEqual(used, 1750)
+        self.assertEqual([item["remaining"] for item in conn.credits], [0, 750])
+        self.assertEqual([item["amount"] for item in conn.redemptions], [1500, 250])
+        self.assertEqual(conn.events[0]["amount"], -1750)
 
         used_again = apply_redemption(
-            conn, "account-1", "order-1", requested=3000, subtotal=10_000, at_ms=1000
+            conn, "account-1", "order-1", requested=3000, subtotal=5_000, at_ms=1000
         )
-        self.assertEqual(used_again, 2000)
-        self.assertEqual([item["remaining"] for item in conn.credits], [0, 500])
+        self.assertEqual(used_again, 1750)
+        self.assertEqual([item["remaining"] for item in conn.credits], [0, 750])
         self.assertEqual(len(conn.redemptions), 2)
 
 

@@ -2,7 +2,7 @@ export const LOYALTY_CODE_KEY = "yusup-loyalty-code-v2";
 export const LEGACY_LOYALTY_TOKEN_KEY = "yusup-loyalty-token-v1";
 export const LOYALTY_DEVICE_KEY = "yusup-loyalty-device-v1";
 export const LOYALTY_EARN_PERCENT = 3;
-export const LOYALTY_REDEEM_PERCENT = 20;
+export const LOYALTY_REDEEM_PERCENT = 35;
 export const LOYALTY_MAX_REDEMPTION = 50_000;
 export const LOYALTY_CODE_PATTERN = /^\d{9}$/;
 
