@@ -830,6 +830,8 @@ function saveLoyaltyCode(code) {
   return true;
 }
 
+const LOYALTY_RATE_LIMITED = Symbol("loyalty-rate-limited");
+
 async function apiGetLoyalty(codeOverride) {
   const hasStoredCredential = localStorage.getItem(LOYALTY_CODE_KEY)
     || localStorage.getItem(LEGACY_LOYALTY_TOKEN_KEY);
@@ -840,6 +842,7 @@ async function apiGetLoyalty(codeOverride) {
       cache: "no-store",
     });
     if (!r.ok) {
+      if (r.status === 429) return LOYALTY_RATE_LIMITED;
       if (!codeOverride && r.status === 401) {
         localStorage.removeItem(LOYALTY_CODE_KEY);
         localStorage.removeItem(LEGACY_LOYALTY_TOKEN_KEY);
@@ -1749,7 +1752,11 @@ function LoyaltyDrawer({
     setMessage("");
     const result = await connectLoyalty(codeInput);
     setWorking(false);
-    if (result) setCodeInput("");
+    if (result === LOYALTY_RATE_LIMITED) setMessage(L3(lang,
+      "Too many attempts. Please try again in about 15 minutes.",
+      "Слишком много попыток. Попробуйте примерно через 15 минут.",
+      "Тым көп әрекет жасалды. Шамамен 15 минуттан кейін қайталаңыз."));
+    else if (result) setCodeInput("");
     else setMessage(L3(lang, "Invalid bonus ID.", "Неверный бонусный ID.", "Бонус ID жарамсыз."));
   };
   const replaceCode = async () => {
@@ -2024,7 +2031,12 @@ function CartDrawer({
     setLoyaltyMessage("");
     const result = await connectLoyalty(loyaltyInput);
     setConnectingLoyalty(false);
-    if (result) {
+    if (result === LOYALTY_RATE_LIMITED) {
+      setLoyaltyMessage(L3(lang,
+        "Too many attempts. Please try again in about 15 minutes.",
+        "Слишком много попыток. Попробуйте примерно через 15 минут.",
+        "Тым көп әрекет жасалды. Шамамен 15 минуттан кейін қайталаңыз."));
+    } else if (result) {
       setLoyaltyInput("");
       setLoyaltyMode("connected");
     } else {
@@ -4899,8 +4911,10 @@ export default function App() {
   const refreshLoyalty = useCallback(async () => {
     setLoyaltyLoading(true);
     const result = await apiGetLoyalty();
-    setLoyalty(result);
-    setLoyaltyCode(localStorage.getItem(LOYALTY_CODE_KEY) || "");
+    if (result !== LOYALTY_RATE_LIMITED) {
+      setLoyalty(result);
+      setLoyaltyCode(localStorage.getItem(LOYALTY_CODE_KEY) || "");
+    }
     setLoyaltyLoading(false);
     return result;
   }, []);
@@ -4908,6 +4922,7 @@ export default function App() {
     const code = normalizeLoyaltyCodeInput(rawCode);
     if (!isValidLoyaltyCode(code)) return null;
     const result = await apiGetLoyalty(code);
+    if (result === LOYALTY_RATE_LIMITED) return LOYALTY_RATE_LIMITED;
     if (!result || !saveLoyaltyCode(code)) return null;
     setLoyaltyCode(code);
     setLoyalty(result);
